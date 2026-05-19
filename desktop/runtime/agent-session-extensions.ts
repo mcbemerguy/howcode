@@ -3,13 +3,15 @@ const extensionSourceSuffixPattern = /\.(ts|js)$/
 import fs from 'node:fs'
 import path from 'node:path'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
-import type { AgentSession } from '@earendil-works/pi-coding-agent'
+import type { AgentSession, SessionShutdownEvent } from '@earendil-works/pi-coding-agent'
 import { applyHeadlessPiTheme } from './headless-pi-theme.ts'
 
 const howcodeExtensionErrorMessageType = 'howcode.extension.error'
 const extensionCommandCancelledResult = { cancelled: true }
 const runnersWithHowcodeContextFilter = new WeakSet<object>()
 const runnersWithCommandAbort = new WeakSet<object>()
+const sessionsWithHeadlessLifecycle = new WeakSet<AgentSession>()
+const sessionsWithHeadlessShutdown = new WeakSet<AgentSession>()
 const activeExtensionCommands = new WeakMap<
   AgentSession,
   { commandName: string; abortController: AbortController }
@@ -17,9 +19,6 @@ const activeExtensionCommands = new WeakMap<
 
 type ExtensionBindings = Parameters<AgentSession['bindExtensions']>[0]
 type ExtensionCommandContextActions = NonNullable<ExtensionBindings['commandContextActions']>
-type ResourceExtensionPaths = Parameters<AgentSession['resourceLoader']['extendResources']>[0]
-
-type ExtensionResourceEntry = { path: string; extensionPath: string }
 
 function findPackageName(startPath: string) {
   let directory =
@@ -59,33 +58,6 @@ function getExtensionDisplayLabel(extensionPath: string) {
   if (packageName) return packageName
 
   return path.basename(extensionPath).replace(extensionSourceSuffixPattern, '')
-}
-
-function getExtensionSourceLabel(extensionPath: string) {
-  if (extensionPath.startsWith('<')) {
-    return `extension:${extensionPath.replace(/[<>]/g, '')}`
-  }
-
-  return `extension:${path.basename(extensionPath).replace(extensionSourceSuffixPattern, '')}`
-}
-
-function buildExtensionResourcePaths(entries: ExtensionResourceEntry[]) {
-  return entries.map((entry) => {
-    const source = getExtensionSourceLabel(entry.extensionPath)
-    const baseDir = entry.extensionPath.startsWith('<')
-      ? undefined
-      : path.dirname(entry.extensionPath)
-
-    return {
-      path: entry.path,
-      metadata: {
-        source,
-        scope: 'temporary' as const,
-        origin: 'top-level' as const,
-        ...(baseDir === undefined ? {} : { baseDir }),
-      },
-    }
-  })
 }
 
 type HeadlessAgentSessionExtensionOptions = {
@@ -220,26 +192,6 @@ function bindHeadlessCommandAbort(
   }
 }
 
-export async function discoverHeadlessAgentSessionResources(session: AgentSession) {
-  if (!session.extensionRunner.hasHandlers('resources_discover')) {
-    return
-  }
-
-  const { skillPaths, promptPaths, themePaths } =
-    await session.extensionRunner.emitResourcesDiscover(session.sessionManager.getCwd(), 'startup')
-
-  if (skillPaths.length === 0 && promptPaths.length === 0 && themePaths.length === 0) {
-    return
-  }
-
-  const extensionPaths: ResourceExtensionPaths = {
-    skillPaths: buildExtensionResourcePaths(skillPaths),
-    promptPaths: buildExtensionResourcePaths(promptPaths),
-    themePaths: buildExtensionResourcePaths(themePaths),
-  }
-  session.resourceLoader.extendResources(extensionPaths)
-}
-
 export async function refreshHeadlessAgentSessionExtensionBindings(
   session: AgentSession,
   options: HeadlessAgentSessionExtensionOptions = {},
@@ -256,12 +208,64 @@ export async function bindHeadlessAgentSessionExtensions(
   options: HeadlessAgentSessionExtensionOptions = {},
 ) {
   await refreshHeadlessAgentSessionExtensionBindings(session, options)
-  await session.bindExtensions({
-    commandContextActions: createHeadlessCommandContextActions(session, options),
-    shutdownHandler: () => undefined,
-    onError: (error) => {
-      void reportHeadlessExtensionError(session, error, options)
-    },
-  })
+  if (!sessionsWithHeadlessLifecycle.has(session)) {
+    await session.bindExtensions({
+      commandContextActions: createHeadlessCommandContextActions(session, options),
+      shutdownHandler: () => undefined,
+      onError: (error) => {
+        void reportHeadlessExtensionError(session, error, options)
+      },
+    })
+    sessionsWithHeadlessLifecycle.add(session)
+  }
   await refreshHeadlessAgentSessionExtensionBindings(session, options)
+}
+
+export async function shutdownHeadlessAgentSessionExtensions(
+  session: AgentSession,
+  reason: SessionShutdownEvent['reason'] = 'quit',
+) {
+  if (!sessionsWithHeadlessLifecycle.has(session) || sessionsWithHeadlessShutdown.has(session)) {
+    return
+  }
+
+  sessionsWithHeadlessShutdown.add(session)
+  if (!session.extensionRunner.hasHandlers('session_shutdown')) {
+    return
+  }
+
+  await session.extensionRunner.emit({ type: 'session_shutdown', reason })
+}
+
+export async function disposeHeadlessAgentSessionWithExtensions(
+  session: AgentSession,
+  reason: SessionShutdownEvent['reason'] = 'quit',
+) {
+  let shutdownError: unknown
+  try {
+    await shutdownHeadlessAgentSessionExtensions(session, reason)
+  } catch (error) {
+    shutdownError = error
+  } finally {
+    session.dispose()
+  }
+
+  if (shutdownError) {
+    throw shutdownError
+  }
+}
+
+export async function withHeadlessAgentSessionLifecycle<T>(
+  session: AgentSession,
+  task: (session: AgentSession) => Promise<T> | T,
+  options: HeadlessAgentSessionExtensionOptions = {},
+) {
+  await bindHeadlessAgentSessionExtensions(session, options)
+  try {
+    return await task(session)
+  } finally {
+    await disposeHeadlessAgentSessionWithExtensions(session).catch((error) => {
+      console.warn('Pi extension shutdown failed', error)
+    })
+  }
 }

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { getPersistedSessionPath } from '../../shared/session-paths.ts'
 import { getPiModule } from '../pi-module.ts'
+import { disposeHeadlessAgentSessionWithExtensions } from '../runtime/agent-session-extensions.ts'
 import { buildComposerState } from '../runtime/composer-state.ts'
 import { normalizeRuntimeSettingsCwd } from '../runtime/runtime-settings-cwd.ts'
 import type { PiRuntime } from '../runtime/types.ts'
@@ -49,7 +50,9 @@ async function disposeRuntimeIfIdle(runtimeKey: string, record: RuntimeRecord) {
       scheduleRuntimeDisposal(runtimeKey)
       return
     }
-    runtime.session.dispose()
+    await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+      console.warn('Pi extension shutdown failed', error)
+    })
   } finally {
     if (runtimeRecords.get(runtimeKey) === record) runtimeRecords.delete(runtimeKey)
     staleRuntimeGenerations.delete(runtimeKey)
@@ -117,7 +120,9 @@ export async function getOrCreateRuntimeForSessionPath(
       return await existingRuntime.runtimePromise
     } else {
       const runtime = await existingRuntime.runtimePromise
-      runtime.session.dispose()
+      await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+        console.warn('Pi extension shutdown failed', error)
+      })
       runtimeRecords.delete(persistedSessionPath)
     }
   }
@@ -289,7 +294,11 @@ export async function disposeAllRuntimeHosts() {
     entries.map(async ([runtimeKey, record]) => {
       clearRuntimeDisposeTimeout(runtimeKey)
       try {
-        ;(await record.runtimePromise).session.dispose()
+        await disposeHeadlessAgentSessionWithExtensions((await record.runtimePromise).session).catch(
+          (error) => {
+            console.warn('Pi extension shutdown failed', error)
+          },
+        )
       } catch {
         // Ignore shutdown races.
       }

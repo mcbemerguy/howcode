@@ -4,6 +4,7 @@ import { getPiModule } from '../pi-module.ts'
 import {
   abortHeadlessExtensionCommand,
   bindHeadlessAgentSessionExtensions,
+  disposeHeadlessAgentSessionWithExtensions,
   isHeadlessExtensionCommandRunning,
   refreshHeadlessAgentSessionExtensionBindings,
 } from './agent-session-extensions.ts'
@@ -254,7 +255,9 @@ export async function getOrCreateRuntimeForSessionPath(
       return runtime
     } else {
       const runtime = await existingRuntime.runtimePromise
-      runtime.session.dispose()
+      await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+        console.warn('Pi extension shutdown failed', error)
+      })
       deleteRuntimeRecordIfCurrent(persistedSessionPath, existingRuntime)
     }
   }
@@ -296,7 +299,9 @@ export async function createRuntimeForNewSession(
     const existingRuntime = getRuntimeRecord(runtimeKey)
     if (existingRuntime) {
       suspendRuntimeDisposal(runtimeKey)
-      runtime.session.dispose()
+      await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+        console.warn('Pi extension shutdown failed', error)
+      })
       return await existingRuntime.runtimePromise
     }
 
@@ -309,6 +314,10 @@ export async function createRuntimeForNewSession(
 export function scheduleRuntimeDisposalForRuntime(runtime: PiRuntime) {
   const runtimeKey = getPersistedSessionPath(runtime.session.sessionFile)
   if (runtimeKey) {
-    scheduleRuntimeDisposal(runtimeKey, isHowcodeRuntimeBusy)
+    scheduleRuntimeDisposal(runtimeKey, isHowcodeRuntimeBusy, (runtimeToDispose) =>
+      disposeHeadlessAgentSessionWithExtensions(runtimeToDispose.session).catch((error) => {
+        console.warn('Pi extension shutdown failed', error)
+      }),
+    )
   }
 }

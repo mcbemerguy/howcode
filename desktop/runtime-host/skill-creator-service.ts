@@ -9,7 +9,10 @@ import { mapAgentMessagesToUiMessages } from '../../shared/pi-message-mapper.ts'
 import { loadAppSettings } from '../app-settings/readers.ts'
 import { getChatSessionDir } from '../chat-session-dir.ts'
 import { getPiModule } from '../pi-module.ts'
-import { bindHeadlessAgentSessionExtensions } from '../runtime/agent-session-extensions.ts'
+import {
+  bindHeadlessAgentSessionExtensions,
+  disposeHeadlessAgentSessionWithExtensions,
+} from '../runtime/agent-session-extensions.ts'
 import {
   clampThinkingLevel,
   createComposerSnapshotSession,
@@ -305,7 +308,9 @@ export async function startSkillCreatorSession(request: {
       }),
     )
   } catch (error) {
-    session.dispose()
+    await disposeHeadlessAgentSessionWithExtensions(session).catch((shutdownError) => {
+      console.warn('Pi extension shutdown failed', shutdownError)
+    })
     skillCreatorSessions.delete(session.sessionId)
     throw error
   }
@@ -329,7 +334,9 @@ export async function closeSkillCreatorSession(request: { sessionId: string }) {
     return { ok: true }
   }
 
-  sessionEntry.session.dispose()
+  await disposeHeadlessAgentSessionWithExtensions(sessionEntry.session).catch((error) => {
+    console.warn('Pi extension shutdown failed', error)
+  })
   skillCreatorSessions.delete(request.sessionId)
   return { ok: true }
 }

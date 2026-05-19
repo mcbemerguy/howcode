@@ -2,7 +2,7 @@ import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import type { ComposerStateRequest } from '../../shared/desktop-contracts.ts'
 import { getDesktopWorkingDirectory } from '../../shared/desktop-working-directory.ts'
 import { getPersistedSessionPath } from '../../shared/session-paths.ts'
-import { discoverHeadlessAgentSessionResources } from '../runtime/agent-session-extensions.ts'
+import { withHeadlessAgentSessionLifecycle } from '../runtime/agent-session-extensions.ts'
 import { createComposerSnapshotSession } from '../runtime/composer-state.ts'
 import {
   getOrCreateRuntimeForSessionPath,
@@ -34,12 +34,5 @@ export async function getComposerSessionResources<T>(
     sessionPath: persistedSessionPath,
   })
 
-  try {
-    await discoverHeadlessAgentSessionResources(snapshot.session).catch((error) => {
-      console.warn('Pi extension resource discovery failed', error)
-    })
-    return mapResources(snapshot.session)
-  } finally {
-    snapshot.session.dispose()
-  }
+  return await withHeadlessAgentSessionLifecycle(snapshot.session, mapResources)
 }

@@ -60,9 +60,12 @@ export function suspendRuntimeDisposal(runtimeKey: string) {
   clearRuntimeDisposeTimeout(runtimeKey)
 }
 
+type RuntimeDisposer = (runtime: PiRuntime) => Promise<void> | void
+
 export function scheduleRuntimeDisposal(
   runtimeKey: string,
   isRuntimeBusy: (runtime: PiRuntime) => boolean,
+  disposeRuntime: RuntimeDisposer = (runtime) => runtime.session.dispose(),
 ) {
   const record = runtimeRecords.get(runtimeKey)
   if (!record) {
@@ -81,11 +84,11 @@ export function scheduleRuntimeDisposal(
       try {
         const runtime = await record.runtimePromise
         if (isRuntimeBusy(runtime)) {
-          scheduleRuntimeDisposal(runtimeKey, isRuntimeBusy)
+          scheduleRuntimeDisposal(runtimeKey, isRuntimeBusy, disposeRuntime)
           return
         }
 
-        runtime.session.dispose()
+        await disposeRuntime(runtime)
       } catch {
         // Ignore runtime disposal races after failed creation.
       } finally {

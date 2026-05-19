@@ -1,11 +1,11 @@
 import type { ComposerSlashCommand, ComposerStateRequest } from '../../shared/desktop-contracts.ts'
 import { getDesktopWorkingDirectory } from '../../shared/desktop-working-directory.ts'
 import { getPersistedSessionPath } from '../../shared/session-paths.ts'
-import { discoverHeadlessAgentSessionResources } from './agent-session-extensions.ts'
+import { withHeadlessAgentSessionLifecycle } from './agent-session-extensions.ts'
 import { mapSessionCommands } from './composer-slash-command-mapping.ts'
 import { createComposerSnapshotSession } from './composer-state.ts'
 import {
-  getCachedRuntimeForSessionPath,
+  getOrCreateRuntimeForSessionPath,
   reloadRuntimeSettingsIfSafe,
   scheduleRuntimeDisposalForRuntime,
 } from './runtime-registry.ts'
@@ -13,12 +13,12 @@ export async function getComposerSlashCommands(
   request: ComposerStateRequest = {},
 ): Promise<ComposerSlashCommand[]> {
   const persistedSessionPath = getPersistedSessionPath(request.sessionPath)
-  const cachedRuntimePromise = persistedSessionPath
-    ? getCachedRuntimeForSessionPath(persistedSessionPath)
-    : null
-
-  if (cachedRuntimePromise && persistedSessionPath) {
-    const runtime = await cachedRuntimePromise
+  if (persistedSessionPath) {
+    const runtime = await getOrCreateRuntimeForSessionPath(persistedSessionPath, {
+      suspendDisposal: true,
+      settingsCwd: request.composerSessionDir ?? null,
+      chatGroupId: request.chatGroupId ?? null,
+    })
     if (!runtime.session.isStreaming) {
       await reloadRuntimeSettingsIfSafe(persistedSessionPath)
     }
@@ -32,12 +32,5 @@ export async function getComposerSlashCommands(
     sessionPath: persistedSessionPath,
   })
 
-  try {
-    await discoverHeadlessAgentSessionResources(snapshot.session).catch((error) => {
-      console.warn('Pi extension resource discovery failed', error)
-    })
-    return mapSessionCommands(snapshot.session)
-  } finally {
-    snapshot.session.dispose()
-  }
+  return await withHeadlessAgentSessionLifecycle(snapshot.session, mapSessionCommands)
 }

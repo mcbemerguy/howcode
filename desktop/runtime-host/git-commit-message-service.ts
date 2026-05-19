@@ -4,7 +4,10 @@ import { mapAgentMessageToUiMessage } from '../../shared/pi-message-mapper.ts'
 import { loadAppSettings } from '../app-settings/readers.ts'
 import { getPiModule } from '../pi-module.ts'
 import type { CommitMessageContext } from '../project-git.ts'
-import { bindHeadlessAgentSessionExtensions } from '../runtime/agent-session-extensions.ts'
+import {
+  bindHeadlessAgentSessionExtensions,
+  disposeHeadlessAgentSessionWithExtensions,
+} from '../runtime/agent-session-extensions.ts'
 import {
   clampThinkingLevel,
   createComposerSnapshotSession,
@@ -286,7 +289,11 @@ export async function generateGitCommitMessage(
   } catch {
     return null
   } finally {
-    session?.dispose()
+    if (session) {
+      await disposeHeadlessAgentSessionWithExtensions(session).catch((error) => {
+        console.warn('Pi extension shutdown failed', error)
+      })
+    }
     resolvedModel.dispose()
   }
 }

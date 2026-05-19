@@ -1,4 +1,5 @@
 import { getPersistedSessionPath } from '../../shared/session-paths.ts'
+import { disposeHeadlessAgentSessionWithExtensions } from './agent-session-extensions.ts'
 import { buildComposerState } from './composer-state.ts'
 import {
   cancelLiveThreadUpdate,
@@ -46,6 +47,12 @@ function publishLiveThreadUpdate(runtime: PiRuntime, handlers: RuntimeSessionEve
   void handlers.publishThreadUpdate(runtime, 'update')
 }
 
+function disposeRuntime(runtime: PiRuntime) {
+  return disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+    console.warn('Pi extension shutdown failed', error)
+  })
+}
+
 function getRuntimeToolProgressPartial(event: RuntimeSessionEvent) {
   if (event.type === 'tool_execution_update') return event.partialResult
   if (event.type === 'tool_execution_end') return event.result
@@ -77,7 +84,7 @@ function handleRuntimeMessageEnd(
       },
     )
   }
-  if (runtimeKey) scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy)
+  if (runtimeKey) scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy, disposeRuntime)
 }
 
 function handleRuntimeAgentEnd(
@@ -89,7 +96,7 @@ function handleRuntimeAgentEnd(
   void handlers.publishThreadUpdate(runtime, 'end')
   if (runtimeKey && handlers.isRuntimeSettingsStale(runtimeKey))
     void handlers.reloadRuntimeSettingsIfSafe(runtimeKey).catch(() => undefined)
-  if (runtimeKey) scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy)
+  if (runtimeKey) scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy, disposeRuntime)
 }
 
 function handleRuntimeCompactionEnd(
@@ -158,6 +165,6 @@ export function handleRuntimeSessionEvent(
   if (event.type === 'queue_update')
     void publishRuntimeComposerState(runtime, handlers).finally(() => {
       if (runtimeKey && !runtime.session.isStreaming)
-        scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy)
+        scheduleRuntimeDisposal(runtimeKey, handlers.isRuntimeBusy, disposeRuntime)
     })
 }
