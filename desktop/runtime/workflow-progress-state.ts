@@ -1,10 +1,14 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import type { PiWorkflowProgressRun } from '../../shared/desktop-contracts.ts'
 import type { PiRuntime } from './types.ts'
 
 const lineBreakPattern = /\r?\n/
 const workflowEventName = 'workflow:running-task'
 const terminalStatuses = new Set(['completed', 'failed', 'aborted'])
+const terminalRunRetentionMs = 60_000
+const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
+const artifactRecoveryLimit = 100
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
 const disposersByRuntime = new WeakMap<PiRuntime, () => void>()
 
@@ -127,12 +131,22 @@ function getSessionRuns(sessionPath: string) {
   return runs
 }
 
-export function getWorkflowProgressRuns(runtime: Pick<PiRuntime, 'session'>) {
+function isTerminalRunExpired(run: PiWorkflowProgressRun, nowMs: number) {
+  if (!run.terminal) return false
+  const updatedAtMs = Date.parse(run.updatedAt)
+  if (!Number.isFinite(updatedAtMs)) return false
+  return nowMs - updatedAtMs > terminalRunRetentionMs
+}
+
+export function getWorkflowProgressRuns(runtime: Pick<PiRuntime, 'session'>, nowMs = Date.now()) {
   const sessionPath = runtime.session.sessionFile
   if (!sessionPath) return []
-  return [...(runsBySessionPath.get(sessionPath)?.values() ?? [])].sort((left, right) =>
-    left.updatedAt.localeCompare(right.updatedAt),
-  )
+  const runs = runsBySessionPath.get(sessionPath)
+  if (!runs) return []
+  for (const [runId, run] of runs) {
+    if (isTerminalRunExpired(run, nowMs)) runs.delete(runId)
+  }
+  return [...runs.values()].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
 }
 
 function parseEventLine(line: string) {
@@ -143,21 +157,93 @@ function parseEventLine(line: string) {
   }
 }
 
-export function recoverWorkflowProgressFromEventsFile(eventsPath: string) {
+function recoverWorkflowProgressArtifact(
+  eventsPath: string,
+): { cwd: string | null; run: PiWorkflowProgressRun } | null {
   if (!existsSync(eventsPath)) return null
   let current: PiWorkflowProgressRun | null = null
+  let cwd: string | null = null
   for (const line of readFileSync(eventsPath, 'utf8').split(lineBreakPattern)) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    current = applyWorkflowProgressEvent(current ?? undefined, parseEventLine(trimmed))
+    const parsed = parseEventLine(trimmed)
+    if (parsed && typeof parsed === 'object') {
+      cwd = asString((parsed as { cwd?: unknown }).cwd) ?? cwd
+    }
+    current = applyWorkflowProgressEvent(current ?? undefined, parsed)
   }
-  return current
+  if (!current) return null
+  return {
+    cwd,
+    run: {
+      ...current,
+      auditPath: current.auditPath ?? join(dirname(eventsPath), 'audit.md'),
+      detailKind: current.detailKind ?? 'workflow-jsonl',
+      detailPath: current.detailPath ?? eventsPath,
+      runDir: current.runDir ?? dirname(eventsPath),
+    } satisfies PiWorkflowProgressRun,
+  }
 }
 
-export function subscribeRuntimeWorkflowProgress(runtime: PiRuntime, onStateChange: () => void) {
+export function recoverWorkflowProgressFromEventsFile(eventsPath: string) {
+  return recoverWorkflowProgressArtifact(eventsPath)?.run ?? null
+}
+
+function samePath(left: string, right: string) {
+  return resolve(left).toLocaleLowerCase() === resolve(right).toLocaleLowerCase()
+}
+
+export function recoverWorkflowProgressFromArtifacts(options: {
+  agentDir: string
+  cwd: string
+  nowMs?: number
+}) {
+  const runsDir = join(options.agentDir, 'workflow-runs')
+  if (!existsSync(runsDir)) return []
+  const nowMs = options.nowMs ?? Date.now()
+  return readdirSync(runsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const eventsPath = join(runsDir, entry.name, 'events.jsonl')
+      try {
+        const stats = statSync(eventsPath)
+        return { eventsPath, mtimeMs: stats.mtimeMs }
+      } catch {
+        return null
+      }
+    })
+    .filter((entry): entry is { eventsPath: string; mtimeMs: number } => Boolean(entry))
+    .filter((entry) => nowMs - entry.mtimeMs <= artifactRecoveryMaxAgeMs)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+    .slice(0, artifactRecoveryLimit)
+    .flatMap((entry) => {
+      const recovered = recoverWorkflowProgressArtifact(entry.eventsPath)
+      return recovered ? [recovered] : []
+    })
+    .filter((entry) => entry.cwd !== null && samePath(entry.cwd, options.cwd))
+    .map((entry) => entry.run)
+}
+
+export function subscribeRuntimeWorkflowProgress(
+  runtime: PiRuntime,
+  onStateChange: () => void,
+  options: { agentDir?: string } = {},
+) {
   disposeRuntimeWorkflowProgress(runtime)
   const sessionPath = runtime.session.sessionFile
   if (!sessionPath) return () => undefined
+
+  if (options.agentDir) {
+    const recoveredRuns = recoverWorkflowProgressFromArtifacts({
+      agentDir: options.agentDir,
+      cwd: runtime.cwd,
+    })
+    if (recoveredRuns.length > 0) {
+      const runs = getSessionRuns(sessionPath)
+      for (const run of recoveredRuns) runs.set(run.runId, run)
+      onStateChange()
+    }
+  }
 
   const eventBus = (
     runtime.session.extensionRunner as unknown as {

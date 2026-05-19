@@ -15,6 +15,7 @@ import {
   createRuntimeSettingsManager,
 } from '../runtime/isolated-settings-manager.ts'
 import type { PiRuntime } from '../runtime/types.ts'
+import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
 import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
@@ -23,7 +24,6 @@ import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,
 } from './runtime-extension-bindings.ts'
-import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import { handleRuntimeSessionEvent } from './runtime-session-events.ts'
 
 type LiveRuntimeFactoryHandlers = {
@@ -192,15 +192,19 @@ export async function createLiveRuntime(
     isRuntimeExtensionCommandRunning,
     reloadRuntimeSettingsIfSafe: handlers.reloadRuntimeSettingsIfSafe,
   })
-  subscribeRuntimeWorkflowProgress(runtime, () => {
-    const activeRuntime = runtime
-    void buildComposerState(activeRuntime).then((composer) => {
-      publishComposerUpdate(composer, {
-        projectId: activeRuntime.cwd,
-        sessionPath: activeRuntime.session.sessionFile,
+  subscribeRuntimeWorkflowProgress(
+    runtime,
+    () => {
+      const activeRuntime = runtime
+      void buildComposerState(activeRuntime).then((composer) => {
+        publishComposerUpdate(composer, {
+          projectId: activeRuntime.cwd,
+          sessionPath: activeRuntime.session.sessionFile,
+        })
       })
-    })
-  })
+    },
+    { agentDir },
+  )
   return runtime
 }
 
