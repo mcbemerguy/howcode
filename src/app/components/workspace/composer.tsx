@@ -8,6 +8,7 @@ import type {
   ComposerThinkingLevel,
   DesktopActionInvoker,
   NativeAskQuestionsRequest,
+  NativeInteractionRequest,
   ProjectDiffBaseline,
   ProjectDiffRenderMode,
   ProjectGitState,
@@ -28,6 +29,7 @@ export type ComposerProps = {
   isCompacting: boolean
   isExtensionCommandRunning: boolean
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
+  nativeInteractionRequests: NativeInteractionRequest[]
   thinkingLevel: ComposerThinkingLevel
   restoredQueuedPrompt: string | null
   streamingBehaviorPreference: ComposerStreamingBehavior

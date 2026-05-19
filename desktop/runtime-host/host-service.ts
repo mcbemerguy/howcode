@@ -13,6 +13,7 @@ export {
 } from './live-runtime-registry.ts'
 export {
   answerNativeAskQuestions,
+  answerNativeInteraction,
   dequeueComposerPrompt,
   getComposerSkills,
   getComposerSlashCommands,

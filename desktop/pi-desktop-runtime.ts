@@ -262,3 +262,9 @@ export function answerNativeAskQuestions(
 ) {
   return invokeRuntimeHost('answerNativeAskQuestions', withComposerModeSettings(request))
 }
+
+export function answerNativeInteraction(
+  request: ComposerStateRequest & { requestId: string; response: unknown },
+) {
+  return invokeRuntimeHost('answerNativeInteraction', withComposerModeSettings(request))
+}

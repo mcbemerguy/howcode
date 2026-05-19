@@ -25,6 +25,7 @@ import {
 } from '../runtime/composer-skill-references.ts'
 import { buildComposerState, buildComposerStateSnapshot } from '../runtime/composer-state.ts'
 import { stopComposerRuntime } from '../runtime/composer-stop.ts'
+import { answerNativeInteraction as answerNativeInteractionForRuntime } from '../runtime/native-interaction-state.ts'
 import { answerNativeAskQuestions as answerNativeAskQuestionsForRuntime } from '../runtime/native-ask-questions-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
 import { getComposerSessionResources } from './composer-resource-service.ts'
@@ -302,6 +303,26 @@ export async function answerNativeAskQuestions(
       chatGroupId: request.chatGroupId ?? null,
     })
     const ok = answerNativeAskQuestionsForRuntime(runtime, request.requestId, request.answers)
+    await emitComposerUpdate({ ...request, sessionPath: persistedSessionPath })
+    return { ok }
+  } finally {
+    scheduleRuntimeDisposal(persistedSessionPath)
+  }
+}
+
+export async function answerNativeInteraction(
+  request: ComposerStateRequest & { requestId: string; response: unknown },
+) {
+  const persistedSessionPath = getPersistedSessionPath(request.sessionPath)
+  if (!persistedSessionPath) return { ok: false }
+
+  try {
+    const runtime = await getOrCreateRuntimeForSessionPath(persistedSessionPath, {
+      suspendDisposal: true,
+      settingsCwd: request.composerSessionDir ?? null,
+      chatGroupId: request.chatGroupId ?? null,
+    })
+    const ok = answerNativeInteractionForRuntime(runtime, request.requestId, request.response)
     await emitComposerUpdate({ ...request, sessionPath: persistedSessionPath })
     return { ok }
   } finally {

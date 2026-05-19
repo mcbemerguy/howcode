@@ -121,6 +121,10 @@ export type RuntimeHostRequestMap = {
     requestId: string
     answers: string[][] | null
   }
+  answerNativeInteraction: ComposerStateRequest & {
+    requestId: string
+    response: unknown
+  }
 }
 
 export type RuntimeHostResponseMap = {
@@ -166,6 +170,7 @@ export type RuntimeHostResponseMap = {
   stopComposerRun: { ok: true }
   dequeueComposerPrompt: string | null
   answerNativeAskQuestions: { ok: boolean }
+  answerNativeInteraction: { ok: boolean }
 }
 
 export type RuntimeHostMainRequestMap = {

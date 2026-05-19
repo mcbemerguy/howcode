@@ -45,6 +45,7 @@ export type DesktopActionPayloadFields = {
   queueId?: string | undefined
   answers?: string[][] | undefined | null
   requestId?: string | undefined
+  response?: unknown
   queueSnapshotKey?: string | undefined
   push?: boolean | undefined
   queueIndex?: number | undefined
@@ -221,6 +222,14 @@ export type DesktopActionPayloadMap = {
     chatGroupId?: string | undefined | null | undefined
     requestId: string
     answers: string[][] | null
+  }
+  'composer.answer-native-interaction': {
+    projectId?: string | undefined | null | undefined
+    sessionPath?: string | undefined | null | undefined
+    composerMode?: 'chat' | 'code' | null
+    chatGroupId?: string | undefined | null | undefined
+    requestId: string
+    response: unknown
   }
   'inbox.mark-read': { sessionPath: string; projectId?: string | undefined | null | undefined }
   'inbox.dismiss': { sessionPath: string; projectId?: string | undefined | null | undefined }

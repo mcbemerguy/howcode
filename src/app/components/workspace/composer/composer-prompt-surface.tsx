@@ -9,6 +9,11 @@ import { AskQuestionsCard } from './ask-questions-card'
 import { ComposerFooter } from './composer-footer'
 import { ComposerPromptInputPanel } from './composer-prompt-input-panel'
 import {
+  getPiAskUserQuestionsRequest,
+  toPiAskUserQuestionsCardQuestions,
+  toPiAskUserQuestionsResponse,
+} from './pi-ask-user-questions'
+import {
   getComposerPlaceholderText,
   isConversationComposerView,
 } from './composer-prompt-surface-helpers'
@@ -16,6 +21,7 @@ import { ComposerAttachmentRail, ComposerStopRail } from './composer-side-contro
 import { useComposerController } from './controller/useComposerController'
 import { useAskQuestionsOverlayHeight } from './useAskQuestionsOverlayHeight'
 import { useComposerAskQuestionsActions } from './useComposerAskQuestionsActions'
+import { useComposerNativeInteractionActions } from './useComposerNativeInteractionActions'
 import { useComposerFileMentions } from './useComposerFileMentions'
 import {
   useComposerAutocompleteEffects,
@@ -46,6 +52,7 @@ export function ComposerPromptSurface({
   isCompacting,
   isExtensionCommandRunning,
   nativeAskQuestionsRequest,
+  nativeInteractionRequests,
   thinkingLevel,
   restoredQueuedPrompt,
   streamingBehaviorPreference,
@@ -148,7 +155,9 @@ export function ComposerPromptSurface({
   const skillMentionPanelRef = useRef<HTMLDivElement>(null)
   const stopButtonBoundaryRef = useRef<HTMLDivElement>(null)
   const askQuestionsOverlayRef = useRef<HTMLDivElement>(null)
-  const showAskQuestions = nativeAskQuestionsRequest !== null
+  const piAskUserQuestionsRequest = getPiAskUserQuestionsRequest(nativeInteractionRequests)
+  const activeAskQuestions = nativeAskQuestionsRequest?.questions ?? (piAskUserQuestionsRequest ? toPiAskUserQuestionsCardQuestions(piAskUserQuestionsRequest.payload) : null)
+  const showAskQuestions = activeAskQuestions !== null
   const { answerNativeQuestions } = useComposerAskQuestionsActions({
     chatGroupId,
     composerMode,
@@ -157,6 +166,22 @@ export function ComposerPromptSurface({
     runComposerAction,
     sessionPath,
   })
+  const { answerNativeInteraction } = useComposerNativeInteractionActions({
+    chatGroupId,
+    composerMode,
+    projectId,
+    runComposerAction,
+    sessionPath,
+  })
+  const answerActiveQuestions = async (answers: string[][] | null) => {
+    if (piAskUserQuestionsRequest) {
+      return await answerNativeInteraction(
+        piAskUserQuestionsRequest.id,
+        toPiAskUserQuestionsResponse(piAskUserQuestionsRequest.payload, answers),
+      )
+    }
+    return await answerNativeQuestions(answers)
+  }
   const startNewSession = () => {
     void runComposerAction('thread.new', { projectId, chatGroupId, composerMode })
   }
@@ -296,19 +321,19 @@ export function ComposerPromptSurface({
           >
             <AskQuestionsCard
               composerDraft={draft}
-              questions={nativeAskQuestionsRequest.questions}
+              questions={activeAskQuestions ?? []}
               onUseComposerDraft={() => {
                 const value = draft
                 setDraft('')
                 return value
               }}
               onAnswered={async (answers) => {
-                const ok = await answerNativeQuestions(answers)
+                const ok = await answerActiveQuestions(answers)
                 if (ok) setDraft('')
                 return ok
               }}
               onDismiss={() => {
-                return answerNativeQuestions(null)
+                return answerActiveQuestions(null)
               }}
               registerArrowNavigation={(handler) => {
                 askQuestionsArrowNavigationRef.current = handler
@@ -378,7 +403,7 @@ export function ComposerPromptSurface({
               onEscapeOverride={
                 showAskQuestions
                   ? () => {
-                      void answerNativeQuestions(null)
+                      void answerActiveQuestions(null)
                       return true
                     }
                   : undefined

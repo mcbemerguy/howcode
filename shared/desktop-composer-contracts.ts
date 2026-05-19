@@ -39,6 +39,37 @@ export type NativeInteractionRequest = {
   } | undefined
 }
 
+export type PiAskUserQuestionsAlternative = {
+  text: string
+  recommended: boolean
+  isOther: boolean
+  originalIndex: number | null
+}
+
+export type PiAskUserQuestionsQuestion = {
+  id: string
+  question: string
+  alternatives: PiAskUserQuestionsAlternative[]
+}
+
+export type PiAskUserQuestionsPayload = {
+  questions: PiAskUserQuestionsQuestion[]
+}
+
+export type PiAskUserQuestionsAnswer = {
+  questionId: string
+  question: string
+  selectedIndex: number
+  selectedOriginalIndex: number | null
+  answer: string
+  fromOther: boolean
+  edited: boolean
+}
+
+export type PiAskUserQuestionsResponse =
+  | { status: 'denied' }
+  | { status: 'confirmed'; answers: PiAskUserQuestionsAnswer[] }
+
 export type ComposerModel = {
   provider: string
   id: string

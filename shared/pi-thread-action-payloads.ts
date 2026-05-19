@@ -289,6 +289,14 @@ export function getNativeAskQuestionsRequestId(payload: DesktopActionPayloadInpu
   return typeof payload.requestId === 'string' ? payload.requestId : null
 }
 
+export function getNativeInteractionRequestId(payload: DesktopActionPayloadInput) {
+  return typeof payload.requestId === 'string' ? payload.requestId : null
+}
+
+export function getNativeInteractionResponse(payload: DesktopActionPayloadInput) {
+  return payload.response
+}
+
 export function getNativeAskQuestionsAnswers(
   payload: DesktopActionPayloadInput,
 ): string[][] | null {

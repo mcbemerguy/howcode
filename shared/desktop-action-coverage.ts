@@ -34,6 +34,7 @@ export const implementedDesktopActions = [
   'composer.dequeue',
   'composer.reload-settings',
   'composer.answer-native-questions',
+  'composer.answer-native-interaction',
   'inbox.mark-read',
   'inbox.dismiss',
   'inbox.clear-read',

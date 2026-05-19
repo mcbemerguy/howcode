@@ -13,9 +13,12 @@ import {
   getComposerThinkingLevel,
   getNativeAskQuestionsAnswers,
   getNativeAskQuestionsRequestId,
+  getNativeInteractionRequestId,
+  getNativeInteractionResponse,
 } from '../../shared/pi-thread-action-payloads.ts'
 import {
   answerNativeAskQuestions,
+  answerNativeInteraction,
   dequeueComposerPrompt,
   sendComposerPrompt,
   setComposerModel,
@@ -92,6 +95,19 @@ async function answerNativeQuestionsFromPayload(payload: AnyDesktopActionPayload
     : handledAction({ error: 'Could not answer pending questions.' })
 }
 
+async function answerNativeInteractionFromPayload(payload: AnyDesktopActionPayload) {
+  const requestId = getNativeInteractionRequestId(payload)
+  if (!requestId) return handledAction()
+  const result = await answerNativeInteraction({
+    ...getComposerRequest(payload),
+    requestId,
+    response: getNativeInteractionResponse(payload),
+  })
+  return result?.ok
+    ? handledAction()
+    : handledAction({ error: 'Could not answer pending interaction.' })
+}
+
 const composerActionHandlers = {
   'composer.model': async (payload) => {
     const selection = getComposerModelSelection(payload)
@@ -115,6 +131,7 @@ const composerActionHandlers = {
     return handledAction()
   },
   'composer.answer-native-questions': answerNativeQuestionsFromPayload,
+  'composer.answer-native-interaction': answerNativeInteractionFromPayload,
 } satisfies Partial<Record<DesktopAction, ComposerActionHandler>>
 
 export async function handleComposerDesktopAction(
