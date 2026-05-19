@@ -30,6 +30,7 @@ import {
 import { useComposerSkillMentions } from './useComposerSkillMentions'
 import { useComposerSlashCommands } from './useComposerSlashCommands'
 import { useGlobalComposerFileDrop } from './useGlobalComposerFileDrop'
+import { WorkflowProgressCard } from './workflow-progress-card'
 
 type ComposerPromptSurfaceProps = ComposerProps & {
   composerPanelRef: RefObject<HTMLDivElement | null>
@@ -72,6 +73,7 @@ export function ComposerPromptSurface({
   isExtensionCommandRunning,
   nativeAskQuestionsRequest,
   nativeInteractionRequests,
+  workflowProgressRuns,
   thinkingLevel,
   restoredQueuedPrompt,
   streamingBehaviorPreference,
@@ -335,6 +337,13 @@ export function ComposerPromptSurface({
       />
 
       <div className="relative grid gap-0 overflow-visible">
+        <WorkflowProgressCard
+          runs={workflowProgressRuns}
+          stopping={isSending}
+          onStop={() => {
+            void stop()
+          }}
+        />
         {showAskQuestions ? (
           <div
             ref={askQuestionsOverlayRef}

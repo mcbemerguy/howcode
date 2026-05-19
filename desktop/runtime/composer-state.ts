@@ -26,6 +26,7 @@ import {
 import { getNativeAskQuestionsRequest } from './native-ask-questions-state.ts'
 import { getNativeInteractionRequests } from './native-interaction-state.ts'
 import type { PiRuntime } from './types.ts'
+import { getWorkflowProgressRuns } from './workflow-progress-state.ts'
 
 export const DEFAULT_COMPOSER_THINKING_LEVEL: ComposerThinkingLevel = 'medium'
 
@@ -276,6 +277,7 @@ export async function buildComposerStateSnapshot(
     queuedPrompts: [],
     nativeInteractionRequests: [],
     nativeAskQuestionsRequest: null,
+    workflowProgressRuns: [],
     contextUsage: snapshot.contextUsage,
     isCompacting: false,
     isExtensionCommandRunning: false,
@@ -302,6 +304,7 @@ export async function buildComposerState(
     queuedPrompts: buildSessionQueuedPrompts(runtime.session),
     nativeInteractionRequests: getNativeInteractionRequests(runtime),
     nativeAskQuestionsRequest: getNativeAskQuestionsRequest(runtime),
+    workflowProgressRuns: getWorkflowProgressRuns(runtime),
     contextUsage: getContextUsageForComposerState(runtime.session, options),
     isCompacting: runtime.session.isCompacting,
     isExtensionCommandRunning: isHeadlessExtensionCommandRunning(runtime.session),

@@ -55,6 +55,7 @@ export type {
   PiAskUserQuestionsPayload,
   PiAskUserQuestionsQuestion,
   PiAskUserQuestionsResponse,
+  PiWorkflowProgressRun,
   PiConfiguredPackage,
   PiConfiguredPackageType,
   PiConfiguredSkill,

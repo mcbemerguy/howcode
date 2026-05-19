@@ -70,6 +70,26 @@ export type PiAskUserQuestionsResponse =
   | { status: 'denied' }
   | { status: 'confirmed'; answers: PiAskUserQuestionsAnswer[] }
 
+export type PiWorkflowProgressRun = {
+  runId: string
+  workflowId: string
+  runDir: string | null
+  auditPath: string | null
+  detailPath: string | null
+  detailKind: 'text' | 'workflow-jsonl' | null
+  currentStepId: string | null
+  currentStepType: string | null
+  currentStepStatus: string | null
+  status: string
+  activity: string | null
+  currentTool: string | null
+  childSessionId: string | null
+  elapsedMs: number | null
+  error: string | null
+  updatedAt: string
+  terminal: boolean
+}
+
 export type ComposerModel = {
   provider: string
   id: string
@@ -92,6 +112,7 @@ export type ComposerState = {
   queuedPrompts: ComposerQueuedPrompt[]
   nativeInteractionRequests: NativeInteractionRequest[]
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
+  workflowProgressRuns: PiWorkflowProgressRun[]
   contextUsage: ComposerContextUsage | null
   isCompacting: boolean
   isExtensionCommandRunning: boolean

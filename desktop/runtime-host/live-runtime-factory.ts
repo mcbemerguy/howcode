@@ -23,6 +23,7 @@ import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,
 } from './runtime-extension-bindings.ts'
+import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import { handleRuntimeSessionEvent } from './runtime-session-events.ts'
 
 type LiveRuntimeFactoryHandlers = {
@@ -190,6 +191,15 @@ export async function createLiveRuntime(
   await bindRuntimeExtensionHandlers(runtime, {
     isRuntimeExtensionCommandRunning,
     reloadRuntimeSettingsIfSafe: handlers.reloadRuntimeSettingsIfSafe,
+  })
+  subscribeRuntimeWorkflowProgress(runtime, () => {
+    const activeRuntime = runtime
+    void buildComposerState(activeRuntime).then((composer) => {
+      publishComposerUpdate(composer, {
+        projectId: activeRuntime.cwd,
+        sessionPath: activeRuntime.session.sessionFile,
+      })
+    })
   })
   return runtime
 }

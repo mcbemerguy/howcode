@@ -46,6 +46,7 @@ export type {
   PiAskUserQuestionsPayload,
   PiAskUserQuestionsQuestion,
   PiAskUserQuestionsResponse,
+  PiWorkflowProgressRun,
 } from './desktop-composer-contracts'
 export type {
   DictationModelId,

@@ -189,6 +189,7 @@ function ChatComposer(props: ChatWorkspaceComposerProps) {
       isExtensionCommandRunning={activeComposerState?.isExtensionCommandRunning ?? false}
       nativeAskQuestionsRequest={activeComposerState?.nativeAskQuestionsRequest ?? null}
       nativeInteractionRequests={activeComposerState?.nativeInteractionRequests ?? []}
+      workflowProgressRuns={activeComposerState?.workflowProgressRuns ?? []}
       thinkingLevel={activeComposerState?.currentThinkingLevel ?? 'off'}
       restoredQueuedPrompt={scopedRestoredQueuedPrompt}
       streamingBehaviorPreference={appSettings.composerStreamingBehavior}

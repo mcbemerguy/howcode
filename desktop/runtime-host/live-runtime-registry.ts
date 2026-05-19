@@ -4,6 +4,7 @@ import { getPiModule } from '../pi-module.ts'
 import { disposeHeadlessAgentSessionWithExtensions } from '../runtime/agent-session-extensions.ts'
 import { buildComposerState } from '../runtime/composer-state.ts'
 import { normalizeRuntimeSettingsCwd } from '../runtime/runtime-settings-cwd.ts'
+import { disposeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
 import {
   abortRuntimeExtensionCommand,
@@ -50,6 +51,7 @@ async function disposeRuntimeIfIdle(runtimeKey: string, record: RuntimeRecord) {
       scheduleRuntimeDisposal(runtimeKey)
       return
     }
+    disposeRuntimeWorkflowProgress(runtime)
     await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
       console.warn('Pi extension shutdown failed', error)
     })
@@ -120,6 +122,7 @@ export async function getOrCreateRuntimeForSessionPath(
       return await existingRuntime.runtimePromise
     } else {
       const runtime = await existingRuntime.runtimePromise
+      disposeRuntimeWorkflowProgress(runtime)
       await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
         console.warn('Pi extension shutdown failed', error)
       })
@@ -294,11 +297,11 @@ export async function disposeAllRuntimeHosts() {
     entries.map(async ([runtimeKey, record]) => {
       clearRuntimeDisposeTimeout(runtimeKey)
       try {
-        await disposeHeadlessAgentSessionWithExtensions((await record.runtimePromise).session).catch(
-          (error) => {
-            console.warn('Pi extension shutdown failed', error)
-          },
-        )
+        const runtime = await record.runtimePromise
+        disposeRuntimeWorkflowProgress(runtime)
+        await disposeHeadlessAgentSessionWithExtensions(runtime.session).catch((error) => {
+          console.warn('Pi extension shutdown failed', error)
+        })
       } catch {
         // Ignore shutdown races.
       }
