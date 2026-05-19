@@ -9,20 +9,20 @@ import { AskQuestionsCard } from './ask-questions-card'
 import { ComposerFooter } from './composer-footer'
 import { ComposerPromptInputPanel } from './composer-prompt-input-panel'
 import {
-  getPiAskUserQuestionsRequest,
-  toPiAskUserQuestionsCardQuestions,
-  toPiAskUserQuestionsResponse,
-} from './pi-ask-user-questions'
-import {
   getComposerPlaceholderText,
   isConversationComposerView,
 } from './composer-prompt-surface-helpers'
 import { ComposerAttachmentRail, ComposerStopRail } from './composer-side-controls'
 import { useComposerController } from './controller/useComposerController'
+import {
+  getPiAskUserQuestionsRequest,
+  toPiAskUserQuestionsCardQuestions,
+  toPiAskUserQuestionsResponse,
+} from './pi-ask-user-questions'
 import { useAskQuestionsOverlayHeight } from './useAskQuestionsOverlayHeight'
 import { useComposerAskQuestionsActions } from './useComposerAskQuestionsActions'
-import { useComposerNativeInteractionActions } from './useComposerNativeInteractionActions'
 import { useComposerFileMentions } from './useComposerFileMentions'
+import { useComposerNativeInteractionActions } from './useComposerNativeInteractionActions'
 import {
   useComposerAutocompleteEffects,
   useComposerEscapeEffects,
@@ -36,6 +36,25 @@ type ComposerPromptSurfaceProps = ComposerProps & {
   mainViewRef: RefObject<HTMLElement | null>
   workspaceFooterRef: RefObject<HTMLElement | null>
   onOpenGitOps: () => void
+}
+
+type PiAskUserQuestionsRequest = ReturnType<typeof getPiAskUserQuestionsRequest>
+
+function useStablePiAskUserQuestionsCardQuestions(request: PiAskUserQuestionsRequest) {
+  const cached = useRef<{
+    requestId: string | null
+    questions: ReturnType<typeof toPiAskUserQuestionsCardQuestions> | null
+  }>({ requestId: null, questions: null })
+  const requestId = request?.id ?? null
+
+  if (cached.current.requestId !== requestId) {
+    cached.current = {
+      requestId,
+      questions: request ? toPiAskUserQuestionsCardQuestions(request.payload) : null,
+    }
+  }
+
+  return cached.current.questions
 }
 
 export function ComposerPromptSurface({
@@ -156,7 +175,9 @@ export function ComposerPromptSurface({
   const stopButtonBoundaryRef = useRef<HTMLDivElement>(null)
   const askQuestionsOverlayRef = useRef<HTMLDivElement>(null)
   const piAskUserQuestionsRequest = getPiAskUserQuestionsRequest(nativeInteractionRequests)
-  const activeAskQuestions = nativeAskQuestionsRequest?.questions ?? (piAskUserQuestionsRequest ? toPiAskUserQuestionsCardQuestions(piAskUserQuestionsRequest.payload) : null)
+  const piAskUserQuestionsCardQuestions =
+    useStablePiAskUserQuestionsCardQuestions(piAskUserQuestionsRequest)
+  const activeAskQuestions = nativeAskQuestionsRequest?.questions ?? piAskUserQuestionsCardQuestions
   const showAskQuestions = activeAskQuestions !== null
   const { answerNativeQuestions } = useComposerAskQuestionsActions({
     chatGroupId,
