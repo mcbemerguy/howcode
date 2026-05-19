@@ -18,6 +18,7 @@ import type { PiRuntime } from '../runtime/types.ts'
 import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
 import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
+import { createPiAskUserQuestionsBridgeTools } from './pi-ui-bridge-host.ts'
 import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,
@@ -109,6 +110,22 @@ export async function createLiveRuntime(
         },
       })
     : []
+  const piAskUserQuestionTools = enabledNativeExtensions.includes('askQuestions')
+    ? await createPiAskUserQuestionsBridgeTools({
+        agentDir,
+        getRuntime: () => runtime,
+        onStateChange: () => {
+          if (!runtime) return
+          const activeRuntime = runtime
+          void buildComposerState(activeRuntime).then((composer) => {
+            publishComposerUpdate(composer, {
+              projectId: activeRuntime.cwd,
+              sessionPath: activeRuntime.session.sessionFile,
+            })
+          })
+        },
+      })
+    : []
   const attachmentFileTools = options.settingsCwd
     ? createAttachmentFileTools({
         cwd: options.cwd,
@@ -137,10 +154,11 @@ export async function createLiveRuntime(
                 invokeMainRequest('listArtifacts', { conversationId }),
             }),
             ...nativeAskQuestionTools,
+            ...piAskUserQuestionTools,
           ],
         }
-      : nativeAskQuestionTools.length > 0
-        ? { customTools: nativeAskQuestionTools }
+      : nativeAskQuestionTools.length > 0 || piAskUserQuestionTools.length > 0
+        ? { customTools: [...nativeAskQuestionTools, ...piAskUserQuestionTools] }
         : {}),
   })
   runtime = {

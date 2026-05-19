@@ -27,6 +27,18 @@ export type NativeAskQuestionsRequest = {
   questions: NativeAskQuestion[]
 }
 
+export type NativeInteractionRequest = {
+  id: string
+  kind: string
+  title?: string | undefined
+  payload: unknown
+  source?: {
+    extension?: string | undefined
+    toolCallId?: string | undefined
+    sessionId?: string | undefined
+  } | undefined
+}
+
 export type ComposerModel = {
   provider: string
   id: string
@@ -47,6 +59,7 @@ export type ComposerState = {
   currentThinkingLevel: ComposerThinkingLevel
   availableThinkingLevels: ComposerThinkingLevel[]
   queuedPrompts: ComposerQueuedPrompt[]
+  nativeInteractionRequests: NativeInteractionRequest[]
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
   contextUsage: ComposerContextUsage | null
   isCompacting: boolean

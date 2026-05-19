@@ -24,6 +24,7 @@ import {
   createRuntimeSettingsManager,
 } from './isolated-settings-manager.ts'
 import { getNativeAskQuestionsRequest } from './native-ask-questions-state.ts'
+import { getNativeInteractionRequests } from './native-interaction-state.ts'
 import type { PiRuntime } from './types.ts'
 
 export const DEFAULT_COMPOSER_THINKING_LEVEL: ComposerThinkingLevel = 'medium'
@@ -273,6 +274,7 @@ export async function buildComposerStateSnapshot(
     currentThinkingLevel: snapshot.currentThinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,
     queuedPrompts: [],
+    nativeInteractionRequests: [],
     nativeAskQuestionsRequest: null,
     contextUsage: snapshot.contextUsage,
     isCompacting: false,
@@ -298,6 +300,7 @@ export async function buildComposerState(
     currentThinkingLevel: runtime.session.thinkingLevel as ComposerThinkingLevel,
     availableThinkingLevels: mapThinkingLevels(runtime.session.getAvailableThinkingLevels()),
     queuedPrompts: buildSessionQueuedPrompts(runtime.session),
+    nativeInteractionRequests: getNativeInteractionRequests(runtime),
     nativeAskQuestionsRequest: getNativeAskQuestionsRequest(runtime),
     contextUsage: getContextUsageForComposerState(runtime.session, options),
     isCompacting: runtime.session.isCompacting,
