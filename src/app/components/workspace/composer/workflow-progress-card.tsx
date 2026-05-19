@@ -1,3 +1,4 @@
+// Pi UI bridge Howcode adapter. Managed by integrations/howcode/scripts/patch-howcode.mjs.
 import type { PiWorkflowProgressRun } from '../../../../../shared/desktop-contracts'
 import { openPathQuery } from '../../../query/desktop-query'
 

@@ -25,8 +25,8 @@ import {
 } from './isolated-settings-manager.ts'
 import { getNativeAskQuestionsRequest } from './native-ask-questions-state.ts'
 import { getNativeInteractionRequests } from './native-interaction-state.ts'
-import type { PiRuntime } from './types.ts'
 import { getWorkflowProgressRuns } from './workflow-progress-state.ts'
+import type { PiRuntime } from './types.ts'
 
 export const DEFAULT_COMPOSER_THINKING_LEVEL: ComposerThinkingLevel = 'medium'
 

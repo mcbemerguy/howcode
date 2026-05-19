@@ -15,11 +15,11 @@ import {
   createRuntimeSettingsManager,
 } from '../runtime/isolated-settings-manager.ts'
 import type { PiRuntime } from '../runtime/types.ts'
-import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
 import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
 import { createPiAskUserQuestionsBridgeTools } from './pi-ui-bridge-host.ts'
+import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,

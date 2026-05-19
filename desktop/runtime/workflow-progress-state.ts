@@ -1,3 +1,4 @@
+// Pi UI bridge Howcode adapter. Managed by integrations/howcode/scripts/patch-howcode.mjs.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { PiWorkflowProgressRun } from '../../shared/desktop-contracts.ts'
