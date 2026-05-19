@@ -9,7 +9,7 @@ vi.mock('./headless-pi-theme.ts', () => ({
 
 type RegisteredCommand = ReturnType<PiRuntime['session']['extensionRunner']['getRegisteredCommands']>[number]
 
-function createLifecycleSensitiveSession() {
+function createLifecycleSensitiveSession(options: { failBind?: boolean } = {}) {
   const commands: RegisteredCommand[] = []
   const events: string[] = []
   const extensionRunner = {
@@ -26,6 +26,7 @@ function createLifecycleSensitiveSession() {
     extensionRunner,
     bindExtensions: vi.fn(async () => {
       events.push('session_start')
+      if (options.failBind) throw new Error('bind failed')
       commands.push({
         invocationName: 'workflow:code-review-fix',
         description: 'Run code review fix workflow',
@@ -72,6 +73,21 @@ describe('headless Pi extension lifecycle', () => {
         throw new Error('mapping failed')
       }),
     ).rejects.toThrow('mapping failed')
+
+    expect(session.extensionRunner.emit).toHaveBeenCalledWith({
+      type: 'session_shutdown',
+      reason: 'quit',
+    })
+    expect(session.dispose).toHaveBeenCalledTimes(1)
+    expect(events).toEqual(['session_start', 'session_shutdown'])
+  })
+
+  test('shuts down and disposes temporary lifecycle sessions when startup binding fails', async () => {
+    const { events, session } = createLifecycleSensitiveSession({ failBind: true })
+
+    await expect(withHeadlessAgentSessionLifecycle(session, mapSessionCommands)).rejects.toThrow(
+      'bind failed',
+    )
 
     expect(session.extensionRunner.emit).toHaveBeenCalledWith({
       type: 'session_shutdown',

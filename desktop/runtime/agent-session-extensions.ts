@@ -209,6 +209,7 @@ export async function bindHeadlessAgentSessionExtensions(
 ) {
   await refreshHeadlessAgentSessionExtensionBindings(session, options)
   if (!sessionsWithHeadlessLifecycle.has(session)) {
+    sessionsWithHeadlessLifecycle.add(session)
     await session.bindExtensions({
       commandContextActions: createHeadlessCommandContextActions(session, options),
       shutdownHandler: () => undefined,
@@ -216,7 +217,6 @@ export async function bindHeadlessAgentSessionExtensions(
         void reportHeadlessExtensionError(session, error, options)
       },
     })
-    sessionsWithHeadlessLifecycle.add(session)
   }
   await refreshHeadlessAgentSessionExtensionBindings(session, options)
 }
@@ -260,8 +260,8 @@ export async function withHeadlessAgentSessionLifecycle<T>(
   task: (session: AgentSession) => Promise<T> | T,
   options: HeadlessAgentSessionExtensionOptions = {},
 ) {
-  await bindHeadlessAgentSessionExtensions(session, options)
   try {
+    await bindHeadlessAgentSessionExtensions(session, options)
     return await task(session)
   } finally {
     await disposeHeadlessAgentSessionWithExtensions(session).catch((error) => {
