@@ -6,6 +6,7 @@ export async function promptAndReturnAfterPreflight(input: {
   emitComposerUpdate: (request: ComposerStateRequest) => Promise<unknown>
   message: string
   options?: Parameters<PiRuntime['session']['prompt']>[1]
+  onPromptAccepted?: () => void
   request: ComposerStateRequest
   runtime: PiRuntime
   scheduleRuntimeDisposal: (runtimeKey: string) => void
@@ -21,6 +22,7 @@ export async function promptAndReturnAfterPreflight(input: {
   })
 
   const accepted = await preflight
+  if (accepted) input.onPromptAccepted?.()
   if (!accepted) {
     await promptPromise
     return
@@ -29,6 +31,7 @@ export async function promptAndReturnAfterPreflight(input: {
   promptPromise
     .catch((error) => {
       console.error('Composer prompt failed after dispatch', error)
+      input.onPromptAccepted?.()
       void input.emitComposerUpdate({
         ...input.request,
         sessionPath: getPersistedSessionPath(input.runtime.session.sessionFile),

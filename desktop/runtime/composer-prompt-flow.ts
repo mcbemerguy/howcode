@@ -25,6 +25,7 @@ export type ComposerSendOutcome = {
 export type ComposerPromptFlowAdapters = {
   emitComposerUpdate: (request?: ComposerStateRequest) => Promise<unknown>
   isRuntimeExtensionCommandRunning: (runtime: PiRuntime) => boolean
+  prepareRuntimeSessionForPublish?: (runtime: PiRuntime) => void
   publishThreadUpdate: (runtime: PiRuntime, reason: 'update') => Promise<unknown>
   scheduleRuntimeDisposal: (runtime: PiRuntime) => void
 }
@@ -61,6 +62,7 @@ export async function compactComposerRuntime(input: {
   if (entries.filter((entry) => entry.type === 'message').length < 2)
     throw new Error('Nothing to compact (no messages yet)')
   await runtime.session.compact(compactInstructions.length > 0 ? compactInstructions : undefined)
+  adapters.prepareRuntimeSessionForPublish?.(runtime)
   await adapters.emitComposerUpdate({ ...request, sessionPath: persistedSessionPath })
   return buildComposerSendResult(runtime, 'sent')
 }
@@ -88,6 +90,7 @@ export async function promptComposerRuntime(input: {
   await runtime.attachmentFileAccess?.grantAttachments(request.attachments ?? [])
   await promptAndReturnAfterPreflight({
     emitComposerUpdate: adapters.emitComposerUpdate,
+    onPromptAccepted: () => adapters.prepareRuntimeSessionForPublish?.(runtime),
     runtime,
     message,
     ...(runtime.session.isStreaming
@@ -100,6 +103,7 @@ export async function promptComposerRuntime(input: {
     request: { ...request, sessionPath: persistedSessionPath },
     scheduleRuntimeDisposal: () => adapters.scheduleRuntimeDisposal(runtime),
   })
+  adapters.prepareRuntimeSessionForPublish?.(runtime)
   await adapters.publishThreadUpdate(runtime, 'update').catch((error) => {
     console.error('Composer prompt accepted but thread update publish failed', error)
   })

@@ -172,13 +172,32 @@ export async function sendComposerPrompt(
   },
 ): Promise<{ outcome: 'sent' | 'stopped'; sessionPath: string | null; threadId: string | null }> {
   const persistedSessionPath = getPersistedSessionPath(request.sessionPath)
+  const localDraftSessionPath = isLocalSessionPath(request.sessionPath) ? request.sessionPath : null
   const compactInstructions = parseCompactSlashCommand(request.text)
 
   const runSend = async (runtime: Awaited<ReturnType<typeof getOrCreateRuntimeForSessionPath>>) => {
+    const rememberRuntimeLocalDraftAlias = () => {
+      rememberLocalDraftSessionAlias({
+        persistedSessionPath: runtime.session.sessionFile,
+        localDraftSessionPath,
+      })
+    }
+    const promptAdapters = {
+      ...composerPromptAdapters,
+      emitComposerUpdate: async (composerRequest?: ComposerStateRequest) => {
+        rememberRuntimeLocalDraftAlias()
+        return await composerPromptAdapters.emitComposerUpdate(composerRequest)
+      },
+      prepareRuntimeSessionForPublish: rememberRuntimeLocalDraftAlias,
+      publishThreadUpdate: async (activeRuntime: typeof runtime, reason: 'update') => {
+        rememberRuntimeLocalDraftAlias()
+        return await composerPromptAdapters.publishThreadUpdate(activeRuntime, reason)
+      },
+    }
     try {
       if (compactInstructions !== null) {
         return await compactComposerRuntime({
-          adapters: composerPromptAdapters,
+          adapters: promptAdapters,
           compactInstructions,
           persistedSessionPath,
           request,
@@ -194,7 +213,7 @@ export async function sendComposerPrompt(
         request.composerStreamingBehavior ??
         loadAppSettings().composerStreamingBehavior
       return await promptComposerRuntime({
-        adapters: composerPromptAdapters,
+        adapters: promptAdapters,
         message,
         persistedSessionPath,
         request,
@@ -202,6 +221,7 @@ export async function sendComposerPrompt(
         streamingBehavior,
       })
     } finally {
+      rememberRuntimeLocalDraftAlias()
       scheduleRuntimeDisposalForRuntime(runtime)
     }
   }
@@ -212,10 +232,10 @@ export async function sendComposerPrompt(
       request.composerSessionDir,
       { chatGroupId: request.chatGroupId ?? null },
     )
-    if (isLocalSessionPath(request.sessionPath)) {
+    if (localDraftSessionPath) {
       rememberLocalDraftSessionAlias({
         persistedSessionPath: runtime.session.sessionFile,
-        localDraftSessionPath: request.sessionPath,
+        localDraftSessionPath,
       })
     }
     await applyComposerModeSettings(runtime, request)

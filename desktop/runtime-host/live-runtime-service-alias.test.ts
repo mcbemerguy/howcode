@@ -162,4 +162,59 @@ describe('runtime-host local draft composer aliases', () => {
       composer: workflowComposer,
     })
   })
+
+  test('records local draft aliases after new runtime session files appear', async () => {
+    const projectId = '/repo/project-b'
+    const persistedSessionPath = '/repo/project-b/.pi/sessions/persisted-after-preflight.jsonl'
+    const draft = createLocalThreadDraft(projectId, 'late-draft')
+    const events: DesktopEvent[] = []
+    setRuntimeHostEventSink((event) => events.push(event))
+
+    const workflowComposer = composerState({ isExtensionCommandRunning: true })
+    const piRuntime = {
+      cwd: projectId,
+      chatGroupId: null,
+      session: {
+        sessionFile: null as string | null,
+        sessionId: 'thread-late',
+        isStreaming: false,
+        isCompacting: false,
+      },
+    }
+
+    mocks.createRuntimeForNewSession.mockResolvedValue(piRuntime)
+    mocks.getCachedRuntimeForSessionPath.mockReturnValue(Promise.resolve(piRuntime))
+    mocks.buildComposerState.mockResolvedValue(workflowComposer)
+    mocks.buildComposerPromptMessage.mockReturnValue({ role: 'user', content: ['go'] })
+    mocks.promptComposerRuntime.mockImplementation(
+      async ({ adapters, request, runtime: activeRuntime }) => {
+        activeRuntime.session.sessionFile = persistedSessionPath
+        adapters.prepareRuntimeSessionForPublish?.(activeRuntime)
+        await adapters.emitComposerUpdate({
+          ...request,
+          sessionPath: activeRuntime.session.sessionFile,
+        })
+        return {
+          outcome: 'sent',
+          sessionPath: activeRuntime.session.sessionFile,
+          threadId: activeRuntime.session.sessionId,
+        }
+      },
+    )
+
+    await sendComposerPrompt({
+      projectId,
+      sessionPath: draft.sessionPath,
+      text: '/workflow:review-fix go',
+      streamingBehavior: 'steer',
+    })
+
+    expect(events).toContainEqual({
+      type: 'composer-update',
+      projectId,
+      sessionPath: persistedSessionPath,
+      localDraftSessionPath: draft.sessionPath,
+      composer: workflowComposer,
+    })
+  })
 })
