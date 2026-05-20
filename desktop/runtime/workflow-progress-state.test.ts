@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
@@ -62,6 +62,32 @@ function writeReviewFixFixture(agentDir: string, cwd: string) {
   )
   writeFileSync(auditPath, '# Audit\n')
   return { auditPath, eventsPath, runDir }
+}
+
+function writeRunJsonFixture(runDir: string, cwd: string, overrides: Record<string, unknown> = {}) {
+  const run = {
+    id: 'run-json-1',
+    workflowId: 'review-fix',
+    status: 'running',
+    cwd,
+    runDir,
+    auditPath: join(runDir, 'audit.md'),
+    startedAt: '2026-05-19T00:00:00.000Z',
+    currentStepIndex: 0,
+    steps: [
+      {
+        id: 'code',
+        index: 0,
+        status: 'running',
+        type: 'agent',
+        startedAt: '2026-05-19T00:00:01.000Z',
+      },
+    ],
+    ...overrides,
+  }
+  writeFileSync(join(runDir, 'run.json'), JSON.stringify(run, null, 2))
+  writeFileSync(join(runDir, 'audit.md'), '# Audit\n')
+  return run
 }
 
 describe('workflow progress state', () => {
@@ -340,6 +366,194 @@ describe('workflow progress state', () => {
         detailPath: eventsPath,
       },
     ])
+  })
+
+  test('recovers run.json summary without reading oversized events.jsonl', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const runDir = join(agentDir, 'workflow-runs', 'huge-events-run')
+    mkdirSync(runDir, { recursive: true })
+    const eventsPath = join(runDir, 'events.jsonl')
+    writeRunJsonFixture(runDir, cwd, {
+      id: 'huge-events-run',
+      workflowId: 'code-review-fix',
+    })
+    writeFileSync(eventsPath, '')
+    truncateSync(eventsPath, 16 * 1024 * 1024 + 1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      expect(
+        recoverWorkflowProgressFromArtifacts({
+          agentDir,
+          cwd,
+          nowMs: Date.now(),
+        }),
+      ).toMatchObject([
+        {
+          runId: 'huge-events-run',
+          workflowId: 'code-review-fix',
+          currentStepId: 'code',
+          status: 'running',
+          detailPath: eventsPath,
+          detailKind: 'workflow-jsonl',
+        },
+      ])
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('skipping events.jsonl'))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  test('isolates malformed artifacts while recovering valid sibling artifacts', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const badRunDir = join(agentDir, 'workflow-runs', 'bad-run')
+    const goodRunDir = join(agentDir, 'workflow-runs', 'good-run')
+    mkdirSync(badRunDir, { recursive: true })
+    mkdirSync(goodRunDir, { recursive: true })
+    writeFileSync(join(badRunDir, 'run.json'), '{not json')
+    writeRunJsonFixture(goodRunDir, cwd, { id: 'good-run' })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      expect(
+        recoverWorkflowProgressFromArtifacts({
+          agentDir,
+          cwd,
+          nowMs: Date.now(),
+        }),
+      ).toMatchObject([
+        {
+          runId: 'good-run',
+          workflowId: 'review-fix',
+          currentStepId: 'code',
+        },
+      ])
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  test('overlays small events.jsonl details onto run.json recovery', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const runDir = join(agentDir, 'workflow-runs', 'overlay-run')
+    mkdirSync(runDir, { recursive: true })
+    const eventsPath = join(runDir, 'events.jsonl')
+    writeRunJsonFixture(runDir, cwd, { id: 'overlay-run' })
+    writeFileSync(
+      eventsPath,
+      [
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:00.000Z',
+          type: 'artifact_initialized',
+          runId: 'overlay-run',
+          workflowId: 'review-fix',
+          cwd,
+        }),
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:02.000Z',
+          type: 'step_update',
+          runId: 'overlay-run',
+          workflowId: 'review-fix',
+          stepId: 'review',
+          stepType: 'agent',
+          status: 'running',
+          activity: 'Running review step',
+          currentTool: 'bash',
+          childSessionId: 'child-overlay',
+          elapsedMs: 2000,
+        }),
+      ].join('\n'),
+    )
+
+    expect(
+      recoverWorkflowProgressFromArtifacts({
+        agentDir,
+        cwd,
+        nowMs: Date.now(),
+      }),
+    ).toMatchObject([
+      {
+        runId: 'overlay-run',
+        currentStepId: 'review',
+        currentStepType: 'agent',
+        activity: 'Running review step',
+        currentTool: 'bash',
+        childSessionId: 'child-overlay',
+        elapsedMs: 2000,
+      },
+    ])
+  })
+
+  test('does not let non-progress events.jsonl lines clobber run.json recovery', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const runDir = join(agentDir, 'workflow-runs', 'artifact-only-run')
+    mkdirSync(runDir, { recursive: true })
+    const eventsPath = join(runDir, 'events.jsonl')
+    writeRunJsonFixture(runDir, cwd, {
+      id: 'artifact-only-run',
+      status: 'completed',
+      endedAt: '2026-05-19T00:00:05.000Z',
+      steps: [
+        {
+          id: 'code',
+          index: 0,
+          status: 'completed',
+          type: 'agent',
+          startedAt: '2026-05-19T00:00:01.000Z',
+          endedAt: '2026-05-19T00:00:05.000Z',
+        },
+      ],
+    })
+    writeFileSync(
+      eventsPath,
+      JSON.stringify({
+        timestamp: '2026-05-19T00:00:00.000Z',
+        type: 'artifact_initialized',
+        runId: 'artifact-only-run',
+        workflowId: 'review-fix',
+        cwd,
+      }),
+    )
+
+    expect(
+      recoverWorkflowProgressFromArtifacts({
+        agentDir,
+        cwd,
+        nowMs: Date.now(),
+      }),
+    ).toMatchObject([
+      {
+        runId: 'artifact-only-run',
+        workflowId: 'review-fix',
+        currentStepId: 'code',
+        currentStepStatus: null,
+        status: 'completed',
+        activity: 'completed',
+        detailPath: eventsPath,
+        terminal: true,
+      },
+    ])
+  })
+
+  test('does not throw subscription when artifact discovery fails', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    writeFileSync(join(agentDir, 'workflow-runs'), 'not a directory')
+    const runtime = createRuntime(join(agentDir, 'session.json'), join(agentDir, 'project'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      expect(() =>
+        subscribeRuntimeWorkflowProgress(runtime as never, vi.fn(), { agentDir }),
+      ).not.toThrow()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   test('recovers the review-fix regression fixture for the active runtime cwd on subscription', () => {

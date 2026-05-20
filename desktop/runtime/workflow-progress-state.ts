@@ -7,9 +7,18 @@ import type { PiRuntime } from './types.ts'
 const lineBreakPattern = /\r?\n/
 const workflowEventName = 'workflow:running-task'
 const terminalStatuses = new Set(['completed', 'failed', 'aborted'])
+const workflowProgressEventTypes = new Set([
+  'run_start',
+  'run_end',
+  'step_start',
+  'step_update',
+  'step_end',
+])
 const terminalRunRetentionMs = 10 * 60 * 1000
 const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
 const artifactRecoveryLimit = 100
+const eventsJsonlRecoveryMaxBytes = 16 * 1024 * 1024
+const runJsonRecoveryMaxBytes = 1024 * 1024
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
 
 type RuntimeSessionLike = { session: { sessionFile?: string | undefined } }
@@ -40,6 +49,43 @@ type UiBridgeEventRecord = Record<string, unknown> & {
 }
 
 type TimestampRecord = Record<string, unknown> & { timestamp?: unknown }
+
+type RecoveredWorkflowProgress = { cwd: string | null; run: PiWorkflowProgressRun }
+
+type ArtifactStats = { mtimeMs: number; size: number }
+
+type ArtifactCandidate = {
+  runDir: string
+  runPath: string
+  eventsPath: string
+  runStats: ArtifactStats | null
+  eventsStats: ArtifactStats | null
+  mtimeMs: number
+}
+
+type RunJsonRecord = Record<string, unknown> & {
+  auditPath?: unknown
+  currentStepIndex?: unknown
+  cwd?: unknown
+  endedAt?: unknown
+  error?: unknown
+  id?: unknown
+  runDir?: unknown
+  runId?: unknown
+  startedAt?: unknown
+  status?: unknown
+  steps?: unknown
+  workflowId?: unknown
+}
+
+type RunJsonStepRecord = Record<string, unknown> & {
+  endedAt?: unknown
+  id?: unknown
+  index?: unknown
+  startedAt?: unknown
+  status?: unknown
+  type?: unknown
+}
 
 function asRecord(value: unknown) {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
@@ -74,6 +120,11 @@ function normalizeEvent(input: unknown): RawWorkflowEvent | null {
   const event = unwrapped as RawWorkflowEvent
   if (!(asString(event.runId) && asString(event.workflowId) && asString(event.type))) return null
   return event
+}
+
+function isWorkflowProgressEvent(event: RawWorkflowEvent) {
+  const type = asString(event.type)
+  return type !== null && workflowProgressEventTypes.has(type)
 }
 
 function getRunIdentity(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
@@ -192,40 +243,238 @@ export function getWorkflowProgressRuns(runtime: RuntimeSessionLike, nowMs = Dat
   return [...runs.values()].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
 }
 
+function recoveryWarning(message: string, artifactPath: string, error?: unknown) {
+  const suffix = error instanceof Error ? `: ${error.message}` : ''
+  console.warn(`Pi workflow recovery: ${message} (${artifactPath})${suffix}`)
+}
+
 function parseEventLine(line: string) {
   try {
-    return JSON.parse(line) as unknown
+    return { parsed: JSON.parse(line) as unknown, ok: true }
   } catch {
+    return { parsed: null, ok: false }
+  }
+}
+
+function parseTimestampMs(value: unknown) {
+  const text = asString(value)
+  if (!text) return null
+  const timestamp = Date.parse(text)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function toIsoString(ms: number) {
+  return new Date(ms).toISOString()
+}
+
+function artifactStats(path: string) {
+  if (!existsSync(path)) return null
+  try {
+    const stats = statSync(path)
+    if (!stats.isFile()) {
+      recoveryWarning('skipping non-file artifact', path)
+      return null
+    }
+    return { mtimeMs: stats.mtimeMs, size: stats.size } satisfies ArtifactStats
+  } catch (error) {
+    recoveryWarning('could not stat artifact', path, error)
     return null
+  }
+}
+
+function readJsonArtifact(path: string, stats: ArtifactStats, maxBytes: number) {
+  if (stats.size > maxBytes) {
+    recoveryWarning(`skipping artifact above ${maxBytes} bytes`, path)
+    return null
+  }
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as unknown
+  } catch (error) {
+    recoveryWarning('could not read or parse artifact', path, error)
+    return null
+  }
+}
+
+function selectRunJsonStep(run: RunJsonRecord) {
+  const steps = Array.isArray(run.steps)
+    ? run.steps.map(asRecord).filter((step): step is RunJsonStepRecord => Boolean(step))
+    : []
+  const running = steps.find((step) => asString(step.status) === 'running')
+  if (running) return running
+  const currentStepIndex = asNumber(run.currentStepIndex)
+  if (currentStepIndex !== null) {
+    const byArrayIndex = steps[currentStepIndex]
+    if (byArrayIndex) return byArrayIndex
+    const byStepIndex = steps.find((step) => asNumber(step.index) === currentStepIndex)
+    if (byStepIndex) return byStepIndex
+  }
+  return steps.length > 0 ? (steps[steps.length - 1] ?? null) : null
+}
+
+function stepActivity(step: RunJsonStepRecord | null, status: string, terminal: boolean) {
+  if (terminal) return status
+  const stepId = step ? asString(step.id) : null
+  const stepStatus = step ? asString(step.status) : null
+  if (stepId && stepStatus) return `${stepId}: ${stepStatus}`
+  if (stepId) return `Step ${stepId}`
+  return status
+}
+
+function getRunJsonIdentity(run: RunJsonRecord, path: string) {
+  const runId = asString(run.id) ?? asString(run.runId)
+  const workflowId = asString(run.workflowId)
+  if (runId && workflowId) return { runId, workflowId }
+  recoveryWarning('skipping run.json without run identity', path)
+  return null
+}
+
+function getRunJsonTiming(
+  run: RunJsonRecord,
+  step: RunJsonStepRecord | null,
+  candidate: ArtifactCandidate,
+  nowMs: number,
+) {
+  const startedAtMs = parseTimestampMs(run.startedAt)
+  const endedAtMs = parseTimestampMs(run.endedAt)
+  const stepEndedAtMs = step ? parseTimestampMs(step.endedAt) : null
+  const stepStartedAtMs = step ? parseTimestampMs(step.startedAt) : null
+  return {
+    elapsedMs: startedAtMs === null ? null : (endedAtMs ?? nowMs) - startedAtMs,
+    updatedAt: toIsoString(endedAtMs ?? stepEndedAtMs ?? stepStartedAtMs ?? candidate.mtimeMs),
+  }
+}
+
+function getRunJsonPaths(run: RunJsonRecord, candidate: ArtifactCandidate) {
+  const auditPath = asString(run.auditPath) ?? join(candidate.runDir, 'audit.md')
+  return {
+    auditPath,
+    detailKind: candidate.eventsStats ? 'workflow-jsonl' : 'text',
+    detailPath: candidate.eventsStats ? candidate.eventsPath : auditPath,
+    runDir: asString(run.runDir) ?? candidate.runDir,
+  } satisfies Pick<PiWorkflowProgressRun, 'auditPath' | 'detailKind' | 'detailPath' | 'runDir'>
+}
+
+function recoverRunJsonArtifact(
+  candidate: ArtifactCandidate,
+  nowMs: number,
+): RecoveredWorkflowProgress | null {
+  if (!candidate.runStats) return null
+  const parsed = readJsonArtifact(candidate.runPath, candidate.runStats, runJsonRecoveryMaxBytes)
+  const run = asRecord(parsed) as RunJsonRecord | null
+  if (!run) return null
+  const identity = getRunJsonIdentity(run, candidate.runPath)
+  if (!identity) return null
+
+  const status = asString(run.status) ?? 'running'
+  const terminal = terminalStatuses.has(status)
+  const step = selectRunJsonStep(run)
+  return {
+    cwd: asString(run.cwd),
+    run: {
+      ...identity,
+      ...getRunJsonPaths(run, candidate),
+      currentStepId: step ? asString(step.id) : null,
+      currentStepType: step ? asString(step.type) : null,
+      currentStepStatus: terminal ? null : step ? asString(step.status) : null,
+      status,
+      activity: stepActivity(step, status, terminal),
+      currentTool: null,
+      childSessionId: null,
+      ...getRunJsonTiming(run, step, candidate, nowMs),
+      error: asString(run.error),
+      terminal,
+    } satisfies PiWorkflowProgressRun,
+  }
+}
+
+function readEventsJsonlContent(eventsPath: string) {
+  try {
+    return readFileSync(eventsPath, 'utf8')
+  } catch (error) {
+    recoveryWarning('could not read events.jsonl', eventsPath, error)
+    return null
+  }
+}
+
+function updateMalformedLineWarning(ok: boolean, warned: boolean, eventsPath: string) {
+  if (ok || warned) return warned
+  recoveryWarning('ignored malformed events.jsonl line', eventsPath)
+  return true
+}
+
+type SmallEventsRecoveryState = {
+  current: PiWorkflowProgressRun | null
+  cwd: string | null
+}
+
+function updateSmallEventsRecoveryState(state: SmallEventsRecoveryState, parsed: unknown) {
+  if (parsed && typeof parsed === 'object') {
+    state.cwd = asString((parsed as { cwd?: unknown }).cwd) ?? state.cwd
+  }
+  const event = normalizeEvent(parsed)
+  if (!(event && isWorkflowProgressEvent(event))) return
+  state.current = applyWorkflowProgressEvent(state.current ?? undefined, event)
+}
+
+function recoverSmallEventsJsonlArtifact(eventsPath: string): RecoveredWorkflowProgress | null {
+  const state: SmallEventsRecoveryState = { current: null, cwd: null }
+  let warnedMalformedLine = false
+  const content = readEventsJsonlContent(eventsPath)
+  if (content === null) return null
+  for (const line of content.split(lineBreakPattern)) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const { parsed, ok } = parseEventLine(trimmed)
+    warnedMalformedLine = updateMalformedLineWarning(ok, warnedMalformedLine, eventsPath)
+    updateSmallEventsRecoveryState(state, parsed)
+  }
+  if (!state.current) return null
+  return {
+    cwd: state.cwd,
+    run: {
+      ...state.current,
+      auditPath: state.current.auditPath ?? join(dirname(eventsPath), 'audit.md'),
+      detailKind: state.current.detailKind ?? 'workflow-jsonl',
+      detailPath: state.current.detailPath ?? eventsPath,
+      runDir: state.current.runDir ?? dirname(eventsPath),
+    } satisfies PiWorkflowProgressRun,
+  }
+}
+
+function recoverEventsJsonlArtifact(
+  eventsPath: string,
+  stats: ArtifactStats,
+): RecoveredWorkflowProgress | null {
+  if (stats.size > eventsJsonlRecoveryMaxBytes) {
+    recoveryWarning(`skipping events.jsonl above ${eventsJsonlRecoveryMaxBytes} bytes`, eventsPath)
+    return null
+  }
+  return recoverSmallEventsJsonlArtifact(eventsPath)
+}
+
+function mergeRecoveredRunJsonAndEvents(
+  summary: RecoveredWorkflowProgress,
+  events: RecoveredWorkflowProgress,
+): RecoveredWorkflowProgress {
+  return {
+    cwd: summary.cwd ?? events.cwd,
+    run: {
+      ...summary.run,
+      ...events.run,
+      auditPath: events.run.auditPath ?? summary.run.auditPath,
+      detailKind: summary.run.detailKind ?? events.run.detailKind,
+      detailPath: summary.run.detailPath ?? events.run.detailPath,
+      runDir: events.run.runDir ?? summary.run.runDir,
+    },
   }
 }
 
 function recoverWorkflowProgressArtifact(
   eventsPath: string,
 ): { cwd: string | null; run: PiWorkflowProgressRun } | null {
-  if (!existsSync(eventsPath)) return null
-  let current: PiWorkflowProgressRun | null = null
-  let cwd: string | null = null
-  for (const line of readFileSync(eventsPath, 'utf8').split(lineBreakPattern)) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const parsed = parseEventLine(trimmed)
-    if (parsed && typeof parsed === 'object') {
-      cwd = asString((parsed as { cwd?: unknown }).cwd) ?? cwd
-    }
-    current = applyWorkflowProgressEvent(current ?? undefined, parsed)
-  }
-  if (!current) return null
-  return {
-    cwd,
-    run: {
-      ...current,
-      auditPath: current.auditPath ?? join(dirname(eventsPath), 'audit.md'),
-      detailKind: current.detailKind ?? 'workflow-jsonl',
-      detailPath: current.detailPath ?? eventsPath,
-      runDir: current.runDir ?? dirname(eventsPath),
-    } satisfies PiWorkflowProgressRun,
-  }
+  const stats = artifactStats(eventsPath)
+  if (!stats) return null
+  return recoverEventsJsonlArtifact(eventsPath, stats)
 }
 
 export function recoverWorkflowProgressFromEventsFile(eventsPath: string) {
@@ -243,6 +492,51 @@ function samePath(left: string, right: string) {
   return normalizeComparablePath(left) === normalizeComparablePath(right)
 }
 
+function readWorkflowRunEntries(runsDir: string) {
+  try {
+    return readdirSync(runsDir, { withFileTypes: true })
+  } catch (error) {
+    recoveryWarning('could not list workflow-runs directory', runsDir, error)
+    return []
+  }
+}
+
+function discoverArtifactCandidates(runsDir: string) {
+  return readWorkflowRunEntries(runsDir)
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry): ArtifactCandidate[] => {
+      const runDir = join(runsDir, entry.name)
+      const runPath = join(runDir, 'run.json')
+      const eventsPath = join(runDir, 'events.jsonl')
+      const runStats = artifactStats(runPath)
+      const eventsStats = artifactStats(eventsPath)
+      const mtimeMs = Math.max(runStats?.mtimeMs ?? 0, eventsStats?.mtimeMs ?? 0)
+      return mtimeMs > 0 ? [{ runDir, runPath, eventsPath, runStats, eventsStats, mtimeMs }] : []
+    })
+}
+
+function recoverArtifactCandidate(
+  candidate: ArtifactCandidate,
+  cwd: string,
+  nowMs: number,
+): RecoveredWorkflowProgress | null {
+  const runJsonRecovered = recoverRunJsonArtifact(candidate, nowMs)
+  if (runJsonRecovered?.cwd && !samePath(runJsonRecovered.cwd, cwd)) return null
+
+  let recovered = runJsonRecovered
+  if (candidate.eventsStats) {
+    const eventsRecovered = recoverEventsJsonlArtifact(candidate.eventsPath, candidate.eventsStats)
+    if (eventsRecovered) {
+      recovered = recovered
+        ? mergeRecoveredRunJsonAndEvents(recovered, eventsRecovered)
+        : eventsRecovered
+    }
+  }
+
+  if (!recovered) return null
+  return recovered.cwd !== null && samePath(recovered.cwd, cwd) ? recovered : null
+}
+
 export function recoverWorkflowProgressFromArtifacts(options: {
   agentDir: string
   cwd: string
@@ -251,23 +545,12 @@ export function recoverWorkflowProgressFromArtifacts(options: {
   const runsDir = join(options.agentDir, 'workflow-runs')
   if (!existsSync(runsDir)) return []
   const nowMs = options.nowMs ?? Date.now()
-  return readdirSync(runsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const eventsPath = join(runsDir, entry.name, 'events.jsonl')
-      try {
-        const stats = statSync(eventsPath)
-        return { eventsPath, mtimeMs: stats.mtimeMs }
-      } catch {
-        return null
-      }
-    })
-    .filter((entry): entry is { eventsPath: string; mtimeMs: number } => Boolean(entry))
+  return discoverArtifactCandidates(runsDir)
     .filter((entry) => nowMs - entry.mtimeMs <= artifactRecoveryMaxAgeMs)
     .sort((left, right) => right.mtimeMs - left.mtimeMs)
     .slice(0, artifactRecoveryLimit)
     .flatMap((entry) => {
-      const recovered = recoverWorkflowProgressArtifact(entry.eventsPath)
+      const recovered = recoverArtifactCandidate(entry, options.cwd, nowMs)
       return recovered
         ? [
             {
@@ -277,7 +560,6 @@ export function recoverWorkflowProgressFromArtifacts(options: {
           ]
         : []
     })
-    .filter((entry) => entry.cwd !== null && samePath(entry.cwd, options.cwd))
     .map((entry) => entry.run)
 }
 
@@ -290,14 +572,18 @@ export function subscribeRuntimeWorkflowProgress(
   if (!sessionPath) return () => undefined
 
   if (options.agentDir) {
-    const recoveredRuns = recoverWorkflowProgressFromArtifacts({
-      agentDir: options.agentDir,
-      cwd: runtime.cwd,
-    })
-    if (recoveredRuns.length > 0) {
-      const runs = getSessionRuns(sessionPath)
-      for (const run of recoveredRuns) runs.set(run.runId, run)
-      onStateChange()
+    try {
+      const recoveredRuns = recoverWorkflowProgressFromArtifacts({
+        agentDir: options.agentDir,
+        cwd: runtime.cwd,
+      })
+      if (recoveredRuns.length > 0) {
+        const runs = getSessionRuns(sessionPath)
+        for (const run of recoveredRuns) runs.set(run.runId, run)
+        onStateChange()
+      }
+    } catch (error) {
+      recoveryWarning('artifact recovery failed', options.agentDir, error)
     }
   }
 
