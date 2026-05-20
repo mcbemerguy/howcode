@@ -34,7 +34,7 @@ export function useAppShellController() {
     selectedSessionPath: selectedThreadSessionPath,
     threadHistoryCompactions: activeWorkflowStepSession ? 0 : bundle.threadHistoryCompactions,
     threadQueryDeferred: activeWorkflowStepSession ? false : bundle.threadQueryDeferred,
-    threadRefreshKey: bundle.threadRefreshKey,
+    threadRefreshKey: activeWorkflowStepSession ? 0 : bundle.threadRefreshKey,
   })
   const inboxQuery = useDesktopInbox()
   const inboxThreads = inboxQuery.data ?? []
