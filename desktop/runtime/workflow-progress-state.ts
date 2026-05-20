@@ -19,6 +19,7 @@ const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
 const artifactRecoveryLimit = 100
 const eventsJsonlRecoveryMaxBytes = 16 * 1024 * 1024
 const runJsonRecoveryMaxBytes = 1024 * 1024
+const childSessionIdPattern = /^[A-Za-z0-9_-]+$/
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
 
 type RuntimeSessionLike = { session: { sessionFile?: string | undefined } }
@@ -375,6 +376,38 @@ function getRunJsonPaths(run: RunJsonRecord, candidate: ArtifactCandidate) {
   } satisfies Pick<PiWorkflowProgressRun, 'auditPath' | 'detailKind' | 'detailPath' | 'runDir'>
 }
 
+function findSessionFileByChildId(
+  runDir: string | null | undefined,
+  childSessionId: string | null,
+) {
+  if (!(runDir && childSessionId && childSessionIdPattern.test(childSessionId))) return null
+  const sessionsDir = join(runDir, 'sessions')
+  try {
+    const matches = readdirSync(sessionsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter(
+        (name) =>
+          name === `${childSessionId}.jsonl` ||
+          (name.endsWith(`_${childSessionId}.jsonl`) &&
+            !name.includes('/') &&
+            !name.includes('\\')),
+      )
+      .sort()
+    return matches.length > 0 ? join(sessionsDir, matches[matches.length - 1] ?? '') : null
+  } catch {
+    return null
+  }
+}
+
+function resolveRecoveredChildSessionPath(input: {
+  runDir: string | null | undefined
+  childSessionId: string | null
+  childSessionPath: string | null
+}) {
+  return input.childSessionPath ?? findSessionFileByChildId(input.runDir, input.childSessionId)
+}
+
 function recoverRunJsonArtifact(
   candidate: ArtifactCandidate,
   nowMs: number,
@@ -389,19 +422,25 @@ function recoverRunJsonArtifact(
   const status = asString(run.status) ?? 'running'
   const terminal = terminalStatuses.has(status)
   const step = selectRunJsonStep(run)
+  const paths = getRunJsonPaths(run, candidate)
+  const childSessionId = step ? asString(step.childSessionId) : null
   return {
     cwd: asString(run.cwd),
     run: {
       ...identity,
-      ...getRunJsonPaths(run, candidate),
+      ...paths,
       currentStepId: step ? asString(step.id) : null,
       currentStepType: step ? asString(step.type) : null,
       currentStepStatus: terminal ? null : step ? asString(step.status) : null,
       status,
       activity: stepActivity(step, status, terminal),
       currentTool: null,
-      childSessionId: step ? asString(step.childSessionId) : null,
-      childSessionPath: step ? asString(step.childSessionPath) : null,
+      childSessionId,
+      childSessionPath: resolveRecoveredChildSessionPath({
+        runDir: paths.runDir,
+        childSessionId,
+        childSessionPath: step ? asString(step.childSessionPath) : null,
+      }),
       ...getRunJsonTiming(run, step, candidate, nowMs),
       error: asString(run.error),
       terminal,
@@ -451,14 +490,20 @@ function recoverSmallEventsJsonlArtifact(eventsPath: string): RecoveredWorkflowP
     updateSmallEventsRecoveryState(state, parsed)
   }
   if (!state.current) return null
+  const runDir = state.current.runDir ?? dirname(eventsPath)
   return {
     cwd: state.cwd,
     run: {
       ...state.current,
-      auditPath: state.current.auditPath ?? join(dirname(eventsPath), 'audit.md'),
+      auditPath: state.current.auditPath ?? join(runDir, 'audit.md'),
       detailKind: state.current.detailKind ?? 'workflow-jsonl',
       detailPath: state.current.detailPath ?? eventsPath,
-      runDir: state.current.runDir ?? dirname(eventsPath),
+      runDir,
+      childSessionPath: resolveRecoveredChildSessionPath({
+        runDir,
+        childSessionId: state.current.childSessionId,
+        childSessionPath: state.current.childSessionPath,
+      }),
     } satisfies PiWorkflowProgressRun,
   }
 }
@@ -589,14 +634,9 @@ export function recoverWorkflowProgressFromArtifacts(options: {
     .slice(0, artifactRecoveryLimit)
     .flatMap((entry) => {
       const recovered = recoverArtifactCandidate(entry, options.cwd, nowMs)
-      return recovered
-        ? [
-            {
-              ...recovered,
-              run: { ...recovered.run, updatedAt: new Date(entry.mtimeMs).toISOString() },
-            },
-          ]
-        : []
+      if (!recovered) return []
+      const run = { ...recovered.run, updatedAt: new Date(entry.mtimeMs).toISOString() }
+      return isTerminalRunExpired(run, nowMs) ? [] : [{ ...recovered, run }]
     })
     .map((entry) => entry.run)
 }

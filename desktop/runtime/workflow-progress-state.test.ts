@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, truncateSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  truncateSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
@@ -411,6 +418,13 @@ describe('workflow progress state', () => {
     const runDir = join(agentDir, 'workflow-runs', 'review-fix-1')
     mkdirSync(runDir, { recursive: true })
     const eventsPath = join(runDir, 'events.jsonl')
+    const childSessionPath = join(
+      runDir,
+      'sessions',
+      '2026-05-19T00-00-01-000Z_artifact-child.jsonl',
+    )
+    mkdirSync(join(runDir, 'sessions'), { recursive: true })
+    writeFileSync(childSessionPath, '')
     writeFileSync(
       eventsPath,
       [
@@ -430,7 +444,6 @@ describe('workflow progress state', () => {
           status: 'running',
           activity: 'Running code step',
           childSessionId: 'artifact-child',
-          childSessionPath: join(runDir, 'sessions', 'artifact-child.jsonl'),
         }),
       ].join('\n'),
     )
@@ -447,7 +460,7 @@ describe('workflow progress state', () => {
         workflowId: 'review-fix',
         currentStepId: 'code',
         status: 'running',
-        childSessionPath: join(runDir, 'sessions', 'artifact-child.jsonl'),
+        childSessionPath,
         detailPath: eventsPath,
       },
     ])
@@ -710,6 +723,39 @@ describe('workflow progress state', () => {
         terminal: true,
       },
     ])
+  })
+
+  test('does not recover expired terminal artifacts after backend reload', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const runDir = join(agentDir, 'workflow-runs', 'expired-terminal-run')
+    mkdirSync(runDir, { recursive: true })
+    writeRunJsonFixture(runDir, cwd, {
+      id: 'expired-terminal-run',
+      status: 'completed',
+      endedAt: '2026-05-19T00:00:05.000Z',
+      steps: [
+        {
+          id: 'code',
+          index: 0,
+          status: 'completed',
+          type: 'agent',
+          startedAt: '2026-05-19T00:00:01.000Z',
+          endedAt: '2026-05-19T00:00:05.000Z',
+        },
+      ],
+    })
+    const artifactTime = new Date('2026-05-19T00:00:05.000Z')
+    utimesSync(join(runDir, 'run.json'), artifactTime, artifactTime)
+    utimesSync(join(runDir, 'audit.md'), artifactTime, artifactTime)
+
+    expect(
+      recoverWorkflowProgressFromArtifacts({
+        agentDir,
+        cwd,
+        nowMs: Date.parse('2026-05-19T00:11:00.000Z'),
+      }),
+    ).toEqual([])
   })
 
   test('does not throw subscription when artifact discovery fails', () => {

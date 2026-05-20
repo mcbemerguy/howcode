@@ -100,18 +100,22 @@ function WorkflowProgressRunCard({
           <dt>Step</dt>
           <dd className="truncate text-[color:var(--text)]">{run.currentStepId ?? '—'}</dd>
         </div>
-        <div>
-          <dt>Step status</dt>
-          <dd className="truncate text-[color:var(--text)]">{run.currentStepStatus ?? '—'}</dd>
-        </div>
+        {run.terminal ? null : (
+          <div>
+            <dt>Step status</dt>
+            <dd className="truncate text-[color:var(--text)]">{run.currentStepStatus ?? '—'}</dd>
+          </div>
+        )}
         <div>
           <dt>Elapsed</dt>
           <dd className="truncate text-[color:var(--text)]">{formatElapsed(run.elapsedMs)}</dd>
         </div>
-        <div>
-          <dt>Child session</dt>
-          <dd className="truncate text-[color:var(--text)]">{run.childSessionId ?? '—'}</dd>
-        </div>
+        {run.terminal ? null : (
+          <div>
+            <dt>Child session</dt>
+            <dd className="truncate text-[color:var(--text)]">{run.childSessionId ?? '—'}</dd>
+          </div>
+        )}
       </dl>
       <div className="mt-3 text-xs text-[color:var(--text-muted)]">
         <span className="text-[color:var(--text)]">{workflowActivity(run)}</span>
