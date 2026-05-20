@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { isLocalSessionPath } from '../../../shared/session-paths'
+import { getLocalDraftProjectId, isLocalSessionPath } from '../../../shared/session-paths'
 import type {
   ChatSidebarState,
   ComposerState,
@@ -70,6 +70,22 @@ export function shouldApplyComposerUpdate(input: {
     input.localDraftSessionPathByPersistedSessionPathRef.current.set(
       input.event.sessionPath,
       input.event.localDraftSessionPath,
+    )
+  }
+
+  if (
+    input.event.sessionPath &&
+    !input.event.localDraftSessionPath &&
+    input.event.composer.isExtensionCommandRunning &&
+    input.latestWorkspaceState.selectedSessionPath &&
+    isLocalSessionPath(input.latestWorkspaceState.selectedSessionPath) &&
+    getLocalDraftProjectId(input.latestWorkspaceState.selectedSessionPath) ===
+      input.event.projectId &&
+    input.event.projectId === input.latestComposerProjectId
+  ) {
+    input.localDraftSessionPathByPersistedSessionPathRef.current.set(
+      input.event.sessionPath,
+      input.latestWorkspaceState.selectedSessionPath,
     )
   }
 

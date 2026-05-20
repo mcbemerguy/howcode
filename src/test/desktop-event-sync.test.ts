@@ -99,6 +99,49 @@ describe('desktop event selection helpers', () => {
     expect(aliasesRef.current.get('/sessions/project-a.jsonl')).toBe(draft.sessionPath)
   })
 
+  it('self-aliases first extension command composer updates for the selected local draft', () => {
+    const draft = createLocalThreadDraft('/repo/project-a', 'draft')
+    const aliasesRef = { current: new Map<string, string>() }
+
+    expect(
+      shouldApplyComposerUpdate({
+        event: composerUpdateEvent({
+          localDraftSessionPath: null,
+          composer: composerState({ isExtensionCommandRunning: true }),
+        }),
+        latestComposerProjectId: draft.projectId,
+        latestWorkspaceState: selectionState({
+          activeView: 'thread',
+          selectedProjectId: draft.projectId,
+          selectedSessionPath: draft.sessionPath,
+        }),
+        localDraftSessionPathByPersistedSessionPathRef: aliasesRef,
+        visibleSessionPath: null,
+      }),
+    ).toBe(true)
+    expect(aliasesRef.current.get('/sessions/project-a.jsonl')).toBe(draft.sessionPath)
+  })
+
+  it('does not self-alias non-running composer updates for a selected local draft', () => {
+    const draft = createLocalThreadDraft('/repo/project-a', 'draft')
+    const aliasesRef = { current: new Map<string, string>() }
+
+    expect(
+      shouldApplyComposerUpdate({
+        event: composerUpdateEvent({ localDraftSessionPath: null }),
+        latestComposerProjectId: draft.projectId,
+        latestWorkspaceState: selectionState({
+          activeView: 'thread',
+          selectedProjectId: draft.projectId,
+          selectedSessionPath: draft.sessionPath,
+        }),
+        localDraftSessionPathByPersistedSessionPathRef: aliasesRef,
+        visibleSessionPath: null,
+      }),
+    ).toBe(false)
+    expect(aliasesRef.current.size).toBe(0)
+  })
+
   it('does not apply persisted composer updates to an unrelated visible local draft', () => {
     const selectedDraft = createLocalThreadDraft('/repo/project-a', 'selected')
     const otherDraft = createLocalThreadDraft('/repo/project-a', 'other')
