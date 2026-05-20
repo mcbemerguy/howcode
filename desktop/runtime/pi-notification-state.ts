@@ -1,7 +1,7 @@
 // Pi UI bridge Howcode adapter. Managed by integrations/howcode/scripts/patch-howcode.mjs.
 import type { PiNotification } from '../../shared/desktop-contracts.ts'
 
-const notificationRetentionMs = 5 * 60 * 1000
+const notificationRetentionMs = 10 * 60 * 1000
 const notificationLimit = 20
 const notificationsBySessionPath = new Map<string, PiNotification[]>()
 
@@ -27,8 +27,12 @@ function asLevel(value: unknown): PiNotification['level'] {
   return value === 'warning' || value === 'error' || value === 'info' ? value : 'info'
 }
 
+function notificationAuditPath(payload: Record<string, unknown>) {
+  return asString(payload['auditPath']) ?? null
+}
+
 function notificationDetailPath(payload: Record<string, unknown>) {
-  return asString(payload['detailPath']) ?? asString(payload['auditPath']) ?? null
+  return asString(payload['detailPath']) ?? null
 }
 
 function notificationDetailKind(payload: Record<string, unknown>) {
@@ -51,6 +55,7 @@ function normalizeNotificationEvent(input: unknown): PiNotification | null {
     message,
     level: asLevel(payload['level']),
     event: asString(payload['event']) ?? null,
+    auditPath: notificationAuditPath(payload),
     detailPath: notificationDetailPath(payload),
     detailKind: notificationDetailKind(payload),
     createdAt,

@@ -18,6 +18,10 @@ function levelClass(level: PiNotification['level']) {
   return 'border-[color:var(--border)]'
 }
 
+function detailActionLabel(notification: PiNotification) {
+  return notification.detailKind === 'workflow-jsonl' ? 'Open events' : 'Open detail'
+}
+
 function PiNotificationEntry({ notification }: { notification: PiNotification }) {
   return (
     <section
@@ -39,15 +43,26 @@ function PiNotificationEntry({ notification }: { notification: PiNotification })
           ) : null}
         </div>
       </div>
-      {notification.detailPath ? (
-        <div className="mt-3">
-          <button
-            type="button"
-            className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--hover)]"
-            onClick={() => void openPathQuery(notification.detailPath ?? '')}
-          >
-            Open detail
-          </button>
+      {notification.auditPath || notification.detailPath ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {notification.auditPath ? (
+            <button
+              type="button"
+              className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--hover)]"
+              onClick={() => void openPathQuery(notification.auditPath ?? '')}
+            >
+              Open audit
+            </button>
+          ) : null}
+          {notification.detailPath && notification.detailPath !== notification.auditPath ? (
+            <button
+              type="button"
+              className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--hover)]"
+              onClick={() => void openPathQuery(notification.detailPath ?? '')}
+            >
+              {detailActionLabel(notification)}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </section>

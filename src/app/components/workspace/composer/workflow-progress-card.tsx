@@ -29,6 +29,10 @@ function workflowActivity(run: PiWorkflowProgressRun) {
   return run.terminal ? 'Workflow finished' : 'Workflow running'
 }
 
+function detailActionLabel(run: PiWorkflowProgressRun) {
+  return run.detailKind === 'workflow-jsonl' ? 'Open events' : 'Open detail'
+}
+
 function WorkflowProgressActions({
   run,
   stopping,
@@ -61,7 +65,7 @@ function WorkflowProgressActions({
           className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--text-muted)] hover:bg-[color:var(--hover)]"
           onClick={() => void openPathQuery(run.detailPath ?? '')}
         >
-          Open detail
+          {detailActionLabel(run)}
         </button>
       ) : null}
     </div>

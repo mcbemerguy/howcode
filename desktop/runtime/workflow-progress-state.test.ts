@@ -123,7 +123,7 @@ describe('workflow progress state', () => {
     })
   })
 
-  test('expires terminal workflow cards after the retention window', () => {
+  test('retains terminal workflow cards long enough to open artifacts', () => {
     const runtime = createRuntime()
     recordRuntimeWorkflowProgressBridgeEvent(runtime as never, {
       type: 'workflow:running-task',
@@ -134,15 +134,23 @@ describe('workflow progress state', () => {
         workflowId: 'review-fix',
         runDir: '/tmp/run-expired',
         auditPath: '/tmp/run-expired/audit.md',
+        detailPath: '/tmp/run-expired/events.jsonl',
+        detailKind: 'workflow-jsonl',
         status: 'completed',
       },
     })
 
     expect(
-      getWorkflowProgressRuns(runtime as never, Date.parse('2026-05-19T00:00:30.000Z')),
-    ).toHaveLength(1)
-    expect(
       getWorkflowProgressRuns(runtime as never, Date.parse('2026-05-19T00:02:00.000Z')),
+    ).toMatchObject([
+      {
+        auditPath: '/tmp/run-expired/audit.md',
+        detailPath: '/tmp/run-expired/events.jsonl',
+        terminal: true,
+      },
+    ])
+    expect(
+      getWorkflowProgressRuns(runtime as never, Date.parse('2026-05-19T00:11:00.000Z')),
     ).toHaveLength(0)
   })
 

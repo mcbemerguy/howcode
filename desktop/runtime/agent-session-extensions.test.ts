@@ -1,5 +1,10 @@
 import { describe, expect, test, vi } from 'vitest'
-import { withHeadlessAgentSessionLifecycle } from './agent-session-extensions.ts'
+import {
+  abortHeadlessExtensionCommand,
+  bindHeadlessAgentSessionExtensions,
+  isHeadlessExtensionCommandRunning,
+  withHeadlessAgentSessionLifecycle,
+} from './agent-session-extensions.ts'
 import { mapSessionCommands } from './composer-slash-command-mapping.ts'
 import type { PiRuntime } from './types.ts'
 
@@ -97,5 +102,51 @@ describe('headless Pi extension lifecycle', () => {
     })
     expect(session.dispose).toHaveBeenCalledTimes(1)
     expect(events).toEqual(['session_start', 'session_shutdown'])
+  })
+
+  test('maps composer stop to the active extension command abort signal', async () => {
+    const commandStateChanges = vi.fn()
+    const seen: { signal?: AbortSignal } = {}
+    const session = {
+      agent: { waitForIdle: vi.fn(async () => undefined) },
+      extensionRunner: {
+        emitContext: vi.fn(async (messages: unknown[]) => messages),
+        getCommand: vi.fn(() => ({
+          handler: async (_args: string, ctx: { signal: AbortSignal }) => {
+            seen.signal = ctx.signal
+            if (ctx.signal.aborted) return
+            await new Promise<void>((resolve) =>
+              ctx.signal.addEventListener('abort', () => resolve()),
+            )
+          },
+        })),
+        hasHandlers: vi.fn(() => false),
+        emit: vi.fn(),
+        getRegisteredCommands: vi.fn(() => []),
+      },
+      bindExtensions: vi.fn(async () => undefined),
+      navigateTree: vi.fn(async () => ({ cancelled: true })),
+      resourceLoader: {
+        getSkills: vi.fn(() => ({ skills: [] })),
+        getThemes: vi.fn(() => ({ themes: [] })),
+      },
+      settingsManager: {
+        getEnableSkillCommands: vi.fn(() => false),
+        getTheme: vi.fn(() => undefined),
+      },
+    } as unknown as PiRuntime['session']
+
+    await bindHeadlessAgentSessionExtensions(session, {
+      onExtensionCommandStateChange: commandStateChanges,
+    })
+    const command = session.extensionRunner.getCommand('workflow:review-fix')
+    const pending = command?.handler?.('', {} as never)
+
+    expect(isHeadlessExtensionCommandRunning(session)).toBe(true)
+    expect(abortHeadlessExtensionCommand(session)).toBe(true)
+    await pending
+    expect(seen.signal?.aborted).toBe(true)
+    expect(isHeadlessExtensionCommandRunning(session)).toBe(false)
+    expect(commandStateChanges).toHaveBeenCalledTimes(2)
   })
 })

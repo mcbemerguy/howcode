@@ -78,6 +78,7 @@ export type PiNotification = {
   message: string
   level: 'info' | 'warning' | 'error'
   event: string | null
+  auditPath: string | null
   detailPath: string | null
   detailKind: 'text' | 'workflow-jsonl' | null
   createdAt: string

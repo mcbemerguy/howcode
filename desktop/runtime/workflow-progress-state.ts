@@ -7,7 +7,7 @@ import type { PiRuntime } from './types.ts'
 const lineBreakPattern = /\r?\n/
 const workflowEventName = 'workflow:running-task'
 const terminalStatuses = new Set(['completed', 'failed', 'aborted'])
-const terminalRunRetentionMs = 60_000
+const terminalRunRetentionMs = 10 * 60 * 1000
 const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
 const artifactRecoveryLimit = 100
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
