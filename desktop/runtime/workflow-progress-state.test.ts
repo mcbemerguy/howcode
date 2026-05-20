@@ -540,6 +540,75 @@ describe('workflow progress state', () => {
     ])
   })
 
+  test('does not let incomplete events regress terminal run.json recovery', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const runDir = join(agentDir, 'workflow-runs', 'terminal-summary-run')
+    mkdirSync(runDir, { recursive: true })
+    const eventsPath = join(runDir, 'events.jsonl')
+    writeRunJsonFixture(runDir, cwd, {
+      id: 'terminal-summary-run',
+      status: 'completed',
+      endedAt: '2026-05-19T00:00:05.000Z',
+      steps: [
+        {
+          id: 'code',
+          index: 0,
+          status: 'completed',
+          type: 'agent',
+          startedAt: '2026-05-19T00:00:01.000Z',
+          endedAt: '2026-05-19T00:00:05.000Z',
+        },
+      ],
+    })
+    writeFileSync(
+      eventsPath,
+      [
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:00.000Z',
+          type: 'run_start',
+          runId: 'terminal-summary-run',
+          workflowId: 'review-fix',
+          runDir,
+          auditPath: join(runDir, 'audit.md'),
+          detailPath: eventsPath,
+          detailKind: 'workflow-jsonl',
+          status: 'running',
+        }),
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:02.000Z',
+          type: 'step_update',
+          runId: 'terminal-summary-run',
+          workflowId: 'review-fix',
+          stepId: 'code',
+          stepType: 'agent',
+          status: 'running',
+          activity: 'Still running in stale events',
+          currentTool: 'bash',
+        }),
+      ].join('\n'),
+    )
+
+    expect(
+      recoverWorkflowProgressFromArtifacts({
+        agentDir,
+        cwd,
+        nowMs: Date.now(),
+      }),
+    ).toMatchObject([
+      {
+        runId: 'terminal-summary-run',
+        workflowId: 'review-fix',
+        currentStepId: 'code',
+        currentStepStatus: null,
+        status: 'completed',
+        activity: 'completed',
+        detailPath: eventsPath,
+        terminal: true,
+      },
+    ])
+  })
+
   test('does not throw subscription when artifact discovery fails', () => {
     const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
     writeFileSync(join(agentDir, 'workflow-runs'), 'not a directory')

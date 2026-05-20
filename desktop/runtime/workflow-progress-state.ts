@@ -456,16 +456,27 @@ function mergeRecoveredRunJsonAndEvents(
   summary: RecoveredWorkflowProgress,
   events: RecoveredWorkflowProgress,
 ): RecoveredWorkflowProgress {
+  const runJsonIsTerminal = summary.run.terminal || terminalStatuses.has(summary.run.status)
+  const merged = {
+    ...summary.run,
+    ...events.run,
+    auditPath: events.run.auditPath ?? summary.run.auditPath,
+    detailKind: summary.run.detailKind ?? events.run.detailKind,
+    detailPath: summary.run.detailPath ?? events.run.detailPath,
+    runDir: events.run.runDir ?? summary.run.runDir,
+  }
+  if (runJsonIsTerminal) {
+    merged.status = summary.run.status
+    merged.currentStepStatus = null
+    merged.activity = summary.run.activity
+    merged.elapsedMs = summary.run.elapsedMs
+    merged.error = summary.run.error
+    merged.updatedAt = summary.run.updatedAt
+    merged.terminal = true
+  }
   return {
     cwd: summary.cwd ?? events.cwd,
-    run: {
-      ...summary.run,
-      ...events.run,
-      auditPath: events.run.auditPath ?? summary.run.auditPath,
-      detailKind: summary.run.detailKind ?? events.run.detailKind,
-      detailPath: summary.run.detailPath ?? events.run.detailPath,
-      runDir: events.run.runDir ?? summary.run.runDir,
-    },
+    run: merged,
   }
 }
 
