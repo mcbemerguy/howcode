@@ -51,13 +51,14 @@ function writeReviewFixFixture(agentDir: string, cwd: string) {
     new URL('./fixtures/review-fix-minimized-events.jsonl', import.meta.url),
     'utf8',
   )
+  const jsonStringContent = (value: string) => JSON.stringify(value).slice(1, -1)
   writeFileSync(
     eventsPath,
     fixture
-      .replaceAll('__PI_UI_BRIDGE_FIXTURE_CWD__', cwd)
-      .replaceAll('__PI_UI_BRIDGE_RUN_DIR__', runDir)
-      .replaceAll('__PI_UI_BRIDGE_AUDIT_PATH__', auditPath)
-      .replaceAll('__PI_UI_BRIDGE_EVENTS_PATH__', eventsPath),
+      .replaceAll('__PI_UI_BRIDGE_FIXTURE_CWD__', jsonStringContent(cwd))
+      .replaceAll('__PI_UI_BRIDGE_RUN_DIR__', jsonStringContent(runDir))
+      .replaceAll('__PI_UI_BRIDGE_AUDIT_PATH__', jsonStringContent(auditPath))
+      .replaceAll('__PI_UI_BRIDGE_EVENTS_PATH__', jsonStringContent(eventsPath)),
   )
   writeFileSync(auditPath, '# Audit\n')
   return { auditPath, eventsPath, runDir }
