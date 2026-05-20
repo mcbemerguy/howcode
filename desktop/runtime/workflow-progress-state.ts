@@ -15,6 +15,7 @@ const workflowProgressEventTypes = new Set([
   'step_end',
 ])
 const terminalRunRetentionMs = 10 * 60 * 1000
+const activeRunRecoveryMaxAgeMs = 5 * 60 * 1000
 const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
 const artifactRecoveryLimit = 100
 const eventsJsonlRecoveryMaxBytes = 16 * 1024 * 1024
@@ -636,6 +637,7 @@ export function recoverWorkflowProgressFromArtifacts(options: {
       const recovered = recoverArtifactCandidate(entry, options.cwd, nowMs)
       if (!recovered) return []
       const run = { ...recovered.run, updatedAt: new Date(entry.mtimeMs).toISOString() }
+      if (!run.terminal && nowMs - entry.mtimeMs > activeRunRecoveryMaxAgeMs) return []
       return isTerminalRunExpired(run, nowMs) ? [] : [{ ...recovered, run }]
     })
     .map((entry) => entry.run)

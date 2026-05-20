@@ -466,6 +466,32 @@ describe('workflow progress state', () => {
     ])
   })
 
+  test('does not recover stale non-terminal workflow artifacts as active runs', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const freshRunDir = join(agentDir, 'workflow-runs', 'fresh-running-run')
+    const staleRunDir = join(agentDir, 'workflow-runs', 'stale-running-run')
+    mkdirSync(freshRunDir, { recursive: true })
+    mkdirSync(staleRunDir, { recursive: true })
+    writeRunJsonFixture(freshRunDir, cwd, { id: 'fresh-running-run' })
+    writeRunJsonFixture(staleRunDir, cwd, { id: 'stale-running-run' })
+    const nowMs = Date.parse('2026-05-19T00:10:00.000Z')
+    const freshDate = new Date(nowMs - 60 * 1000)
+    const staleDate = new Date(nowMs - 10 * 60 * 1000)
+    for (const fileName of ['run.json', 'audit.md']) {
+      utimesSync(join(freshRunDir, fileName), freshDate, freshDate)
+      utimesSync(join(staleRunDir, fileName), staleDate, staleDate)
+    }
+
+    expect(
+      recoverWorkflowProgressFromArtifacts({
+        agentDir,
+        cwd,
+        nowMs,
+      }).map((run) => run.runId),
+    ).toEqual(['fresh-running-run'])
+  })
+
   test('recovers run.json summary without reading oversized events.jsonl', () => {
     const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
     const cwd = join(agentDir, 'project')
