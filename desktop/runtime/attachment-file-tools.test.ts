@@ -12,14 +12,17 @@ async function createFixture() {
   const cwd = await mkdtemp(path.join(tmpdir(), 'howcode-attachment-tools-'))
   const attachedFile = path.join(cwd, 'attached.txt')
   const outsideFile = path.join(cwd, 'outside.txt')
+  const outsideDir = path.join(cwd, 'outside')
   const attachedDir = path.join(cwd, 'folder')
   const nestedDir = path.join(attachedDir, 'nested-folder')
   await mkdir(attachedDir)
   await mkdir(nestedDir)
+  await mkdir(outsideDir)
   await writeFile(attachedFile, 'attached file')
   await writeFile(outsideFile, 'outside file')
+  await writeFile(path.join(outsideDir, 'secret.txt'), 'outside secret')
   await writeFile(path.join(attachedDir, 'nested.txt'), 'nested file')
-  return { cwd, attachedFile, outsideFile, attachedDir, nestedDir }
+  return { cwd, attachedFile, outsideFile, outsideDir, attachedDir, nestedDir }
 }
 
 function getTool(tools: ReturnType<typeof createAttachmentFileTools>['tools'], name: string) {
@@ -60,8 +63,12 @@ describe('attachment file tools', () => {
   })
 
   it('allows ls of attached folders only and blocks symlink escapes', async () => {
-    const { cwd, attachedFile, outsideFile, attachedDir, nestedDir } = await createFixture()
-    await symlink(outsideFile, path.join(attachedDir, 'escape.txt'))
+    const { cwd, attachedFile, outsideDir, attachedDir, nestedDir } = await createFixture()
+    await symlink(
+      outsideDir,
+      path.join(attachedDir, 'escape'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
     const { tools, access } = createAttachmentFileTools({ cwd, autoResizeImages: true })
     const ls = getTool(tools, 'ls')
     const read = getTool(tools, 'read')
@@ -86,10 +93,16 @@ describe('attachment file tools', () => {
       ls.execute('call', { path: nestedDir }, undefined, undefined, { cwd } as never),
     ).rejects.toThrow(notAttachedDirectoryErrorPattern)
     await expect(
-      read.execute('call', { path: path.join('folder', 'escape.txt') }, undefined, undefined, {
-        cwd,
-        model: { input: ['text'] },
-      } as never),
+      read.execute(
+        'call',
+        { path: path.join('folder', 'escape', 'secret.txt') },
+        undefined,
+        undefined,
+        {
+          cwd,
+          model: { input: ['text'] },
+        } as never,
+      ),
     ).rejects.toThrow(notAttachedFileErrorPattern)
   })
 

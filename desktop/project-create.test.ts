@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -74,12 +74,13 @@ describe('project creation', () => {
       createIfMissing: true,
       initializeGit: false,
     })
+    const resolvedProjectPath = await realpath(projectPath)
 
-    expect(result.projectId).toBe(projectPath)
+    expect(result.projectId).toBe(resolvedProjectPath)
     expect(callOrder).toEqual([
-      `start:${projectPath}`,
-      `ensure:${projectPath}`,
-      `top:${projectPath}`,
+      `start:${resolvedProjectPath}`,
+      `ensure:${resolvedProjectPath}`,
+      `top:${resolvedProjectPath}`,
     ])
   })
 

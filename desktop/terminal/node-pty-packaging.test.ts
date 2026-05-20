@@ -64,6 +64,8 @@ describe('node-pty helper packaging patch', () => {
     const result = patchPackagedNodePty(resourcesPath)
 
     expect(result.executableHelpers).toEqual([prebuiltHelperPath])
-    expect(statSync(prebuiltHelperPath).mode & 0o111).not.toBe(0)
+    if (process.platform !== 'win32') {
+      expect(statSync(prebuiltHelperPath).mode & 0o111).not.toBe(0)
+    }
   })
 })
