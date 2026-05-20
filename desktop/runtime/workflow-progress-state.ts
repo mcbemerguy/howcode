@@ -33,6 +33,14 @@ type RawWorkflowEvent = {
   timestamp?: unknown
 }
 
+type UiBridgeEventRecord = Record<string, unknown> & {
+  type?: unknown
+  payload?: unknown
+  timestamp?: unknown
+}
+
+type TimestampRecord = Record<string, unknown> & { timestamp?: unknown }
+
 function asRecord(value: unknown) {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
@@ -50,13 +58,13 @@ function asDetailKind(value: unknown) {
 }
 
 function unwrapWorkflowEvent(input: unknown) {
-  const record = asRecord(input)
-  if (!record || record['type'] !== workflowEventName) return input
-  const payload = asRecord(record['payload'])
+  const record = asRecord(input) as UiBridgeEventRecord | null
+  if (!record || record.type !== workflowEventName) return input
+  const payload = asRecord(record.payload) as TimestampRecord | null
   if (!payload) return null
   return {
     ...payload,
-    timestamp: asString(payload['timestamp']) ?? asString(record['timestamp']) ?? undefined,
+    timestamp: asString(payload.timestamp) ?? asString(record.timestamp) ?? undefined,
   }
 }
 
@@ -260,7 +268,14 @@ export function recoverWorkflowProgressFromArtifacts(options: {
     .slice(0, artifactRecoveryLimit)
     .flatMap((entry) => {
       const recovered = recoverWorkflowProgressArtifact(entry.eventsPath)
-      return recovered ? [recovered] : []
+      return recovered
+        ? [
+            {
+              ...recovered,
+              run: { ...recovered.run, updatedAt: new Date(entry.mtimeMs).toISOString() },
+            },
+          ]
+        : []
     })
     .filter((entry) => entry.cwd !== null && samePath(entry.cwd, options.cwd))
     .map((entry) => entry.run)

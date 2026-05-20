@@ -15,6 +15,16 @@ type UiBridgeEventLike = {
   source?: { extension?: unknown; toolCallId?: unknown; sessionId?: unknown } | undefined
 }
 
+type NotificationPayload = Record<string, unknown> & {
+  auditPath?: unknown
+  detailPath?: unknown
+  detailKind?: unknown
+  title?: unknown
+  message?: unknown
+  level?: unknown
+  event?: unknown
+}
+
 function asRecord(value: unknown) {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
@@ -27,34 +37,34 @@ function asLevel(value: unknown): PiNotification['level'] {
   return value === 'warning' || value === 'error' || value === 'info' ? value : 'info'
 }
 
-function notificationAuditPath(payload: Record<string, unknown>) {
-  return asString(payload['auditPath']) ?? null
+function notificationAuditPath(payload: NotificationPayload) {
+  return asString(payload.auditPath) ?? null
 }
 
-function notificationDetailPath(payload: Record<string, unknown>) {
-  return asString(payload['detailPath']) ?? null
+function notificationDetailPath(payload: NotificationPayload) {
+  return asString(payload.detailPath) ?? null
 }
 
-function notificationDetailKind(payload: Record<string, unknown>) {
-  const kind = payload['detailKind']
+function notificationDetailKind(payload: NotificationPayload) {
+  const kind = payload.detailKind
   return kind === 'text' || kind === 'workflow-jsonl' ? kind : null
 }
 
 function normalizeNotificationEvent(input: unknown): PiNotification | null {
   const event = asRecord(input) as UiBridgeEventLike | null
   if (!event || event.type !== 'notification') return null
-  const payload = asRecord(event.payload)
+  const payload = asRecord(event.payload) as NotificationPayload | null
   if (!payload) return null
-  const title = asString(payload['title']) ?? 'Pi'
-  const message = typeof payload['message'] === 'string' ? payload['message'] : ''
+  const title = asString(payload.title) ?? 'Pi'
+  const message = typeof payload.message === 'string' ? payload.message : ''
   if (!message && title === 'Pi') return null
   const createdAt = asString(event.timestamp) ?? new Date().toISOString()
   return {
     id: asString(event.id) ?? `pi_notification_${Date.now().toString(36)}`,
     title,
     message,
-    level: asLevel(payload['level']),
-    event: asString(payload['event']) ?? null,
+    level: asLevel(payload.level),
+    event: asString(payload.event) ?? null,
     auditPath: notificationAuditPath(payload),
     detailPath: notificationDetailPath(payload),
     detailKind: notificationDetailKind(payload),

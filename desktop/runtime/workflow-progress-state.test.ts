@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
@@ -13,7 +13,10 @@ import {
   subscribeRuntimeWorkflowProgress,
 } from './workflow-progress-state.ts'
 
-function createRuntime(sessionFile = `/tmp/session-${Date.now()}-${Math.random()}.json`) {
+function createRuntime(
+  sessionFile = `/tmp/session-${Date.now()}-${Math.random()}.json`,
+  cwd = '/tmp/project',
+) {
   const model = {
     provider: 'test',
     id: 'test-model',
@@ -33,10 +36,31 @@ function createRuntime(sessionFile = `/tmp/session-${Date.now()}-${Math.random()
     isCompacting: false,
   }
   return {
-    cwd: '/tmp/project',
+    cwd,
     session,
     chatGroupId: null,
   }
+}
+
+function writeReviewFixFixture(agentDir: string, cwd: string) {
+  const runDir = join(agentDir, 'workflow-runs', 'review-fix-20260519225734-ffm6gv')
+  const auditPath = join(runDir, 'audit.md')
+  const eventsPath = join(runDir, 'events.jsonl')
+  mkdirSync(runDir, { recursive: true })
+  const fixture = readFileSync(
+    new URL('./fixtures/review-fix-minimized-events.jsonl', import.meta.url),
+    'utf8',
+  )
+  writeFileSync(
+    eventsPath,
+    fixture
+      .replaceAll('__PI_UI_BRIDGE_FIXTURE_CWD__', cwd)
+      .replaceAll('__PI_UI_BRIDGE_RUN_DIR__', runDir)
+      .replaceAll('__PI_UI_BRIDGE_AUDIT_PATH__', auditPath)
+      .replaceAll('__PI_UI_BRIDGE_EVENTS_PATH__', eventsPath),
+  )
+  writeFileSync(auditPath, '# Audit\n')
+  return { auditPath, eventsPath, runDir }
 }
 
 describe('workflow progress state', () => {
@@ -315,6 +339,40 @@ describe('workflow progress state', () => {
         detailPath: eventsPath,
       },
     ])
+  })
+
+  test('recovers the review-fix regression fixture for the active runtime cwd on subscription', () => {
+    const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+    const cwd = join(agentDir, 'project')
+    const { auditPath, eventsPath } = writeReviewFixFixture(agentDir, cwd)
+    const runtime = createRuntime(join(agentDir, 'session.json'), cwd)
+    const onStateChange = vi.fn()
+
+    subscribeRuntimeWorkflowProgress(runtime as never, onStateChange, { agentDir })
+
+    expect(onStateChange).toHaveBeenCalledTimes(1)
+    expect(getWorkflowProgressRuns(runtime as never)).toMatchObject([
+      {
+        runId: 'review-fix-20260519225734-ffm6gv',
+        workflowId: 'review-fix',
+        auditPath,
+        detailPath: eventsPath,
+        currentStepId: 'double-check-and-fix',
+        currentStepStatus: null,
+        status: 'completed',
+        activity: 'completed',
+        childSessionId: '019e4276-5f71-70d9-ad40-02d302bac4e4',
+        elapsedMs: 65243,
+        terminal: true,
+      },
+    ])
+
+    const otherRuntime = createRuntime(
+      join(agentDir, 'other-session.json'),
+      join(agentDir, 'other'),
+    )
+    subscribeRuntimeWorkflowProgress(otherRuntime as never, vi.fn(), { agentDir })
+    expect(getWorkflowProgressRuns(otherRuntime as never)).toEqual([])
   })
 
   test.skipIf(process.platform === 'win32' || process.platform === 'darwin')(
