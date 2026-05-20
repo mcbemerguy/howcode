@@ -134,6 +134,39 @@ describe('workflow progress state', () => {
     })
   })
 
+  test('clears previous step session metadata when a new step starts without a session', () => {
+    const codeStep = applyWorkflowProgressEvent(undefined, {
+      type: 'step_update',
+      runId: 'run-1',
+      workflowId: 'review-fix',
+      stepId: 'code',
+      stepType: 'agent',
+      status: 'running',
+      activity: 'Running tool',
+      currentTool: 'bash',
+      childSessionId: 'code-child',
+      childSessionPath: '/tmp/run-1/sessions/code-child.jsonl',
+    })
+    const reviewStep = applyWorkflowProgressEvent(codeStep ?? undefined, {
+      type: 'step_start',
+      runId: 'run-1',
+      workflowId: 'review-fix',
+      stepId: 'review',
+      stepType: 'agent',
+      status: 'running',
+      activity: 'starting step review',
+    })
+
+    expect(reviewStep).toMatchObject({
+      currentStepId: 'review',
+      currentStepStatus: 'running',
+      activity: 'starting step review',
+      currentTool: null,
+      childSessionId: null,
+      childSessionPath: null,
+    })
+  })
+
   test('does not treat completed step events as terminal run states', () => {
     const running = applyWorkflowProgressEvent(undefined, {
       type: 'run_start',
@@ -332,6 +365,43 @@ describe('workflow progress state', () => {
       childSessionPath: join(directory, 'sessions', 'events-child.jsonl'),
       elapsedMs: 2000,
       terminal: true,
+    })
+  })
+
+  test('does not recover a previous step child session as the active next step session', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'howcode-workflow-progress-'))
+    const eventsPath = join(directory, 'events.jsonl')
+    writeFileSync(
+      eventsPath,
+      [
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:00.000Z',
+          type: 'step_update',
+          runId: 'run-2',
+          workflowId: 'code-review-fix',
+          stepId: 'code',
+          status: 'running',
+          currentTool: 'bash',
+          childSessionId: 'code-child',
+          childSessionPath: join(directory, 'sessions', 'code-child.jsonl'),
+        }),
+        JSON.stringify({
+          timestamp: '2026-05-19T00:00:01.000Z',
+          type: 'step_start',
+          runId: 'run-2',
+          workflowId: 'code-review-fix',
+          stepId: 'review',
+          status: 'running',
+          activity: 'starting step review',
+        }),
+      ].join('\n'),
+    )
+
+    expect(recoverWorkflowProgressFromEventsFile(eventsPath)).toMatchObject({
+      currentStepId: 'review',
+      currentTool: null,
+      childSessionId: null,
+      childSessionPath: null,
     })
   })
 

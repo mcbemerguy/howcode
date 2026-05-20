@@ -161,12 +161,29 @@ function getRunStatus(previous: PiWorkflowProgressRun | undefined, event: RawWor
   }
 }
 
+function shouldResetStepScopedFields(
+  previous: PiWorkflowProgressRun | undefined,
+  event: RawWorkflowEvent,
+) {
+  if (asString(event.type) === 'step_start') return true
+  const eventStepId = asString(event.stepId)
+  return Boolean(previous?.currentStepId && eventStepId && eventStepId !== previous.currentStepId)
+}
+
 function getRunActivity(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
+  const resetStepScopedFields = shouldResetStepScopedFields(previous, event)
   return {
-    activity: asString(event.activity) ?? previous?.activity ?? null,
-    childSessionId: asString(event.childSessionId) ?? previous?.childSessionId ?? null,
-    childSessionPath: asString(event.childSessionPath) ?? previous?.childSessionPath ?? null,
-    currentTool: asString(event.currentTool) ?? previous?.currentTool ?? null,
+    activity:
+      asString(event.activity) ?? (resetStepScopedFields ? null : (previous?.activity ?? null)),
+    childSessionId:
+      asString(event.childSessionId) ??
+      (resetStepScopedFields ? null : (previous?.childSessionId ?? null)),
+    childSessionPath:
+      asString(event.childSessionPath) ??
+      (resetStepScopedFields ? null : (previous?.childSessionPath ?? null)),
+    currentTool:
+      asString(event.currentTool) ??
+      (resetStepScopedFields ? null : (previous?.currentTool ?? null)),
     error: asString(event.error) ?? previous?.error ?? null,
   }
 }
