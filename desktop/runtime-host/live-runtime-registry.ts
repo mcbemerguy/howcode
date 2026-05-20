@@ -4,8 +4,8 @@ import { getPiModule } from '../pi-module.ts'
 import { disposeHeadlessAgentSessionWithExtensions } from '../runtime/agent-session-extensions.ts'
 import { buildComposerState } from '../runtime/composer-state.ts'
 import { normalizeRuntimeSettingsCwd } from '../runtime/runtime-settings-cwd.ts'
-import { disposeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
+import { disposeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import {
   abortRuntimeExtensionCommand,
   createLiveRuntime,

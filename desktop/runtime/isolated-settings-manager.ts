@@ -1,5 +1,9 @@
 import path from 'node:path'
-import type { ResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent'
+import type {
+  ExtensionFactory,
+  ResourceLoader,
+  SettingsManager,
+} from '@earendil-works/pi-coding-agent'
 
 type SettingsManagerFactory = {
   create: (cwd: string, agentDir?: string | undefined) => SettingsManager
@@ -60,14 +64,17 @@ export async function createIsolatedRuntimeResourceLoader(options: {
     noSkills?: boolean
     additionalSkillPaths?: string[]
     systemPrompt?: string
+    extensionFactories?: ExtensionFactory[]
   }) => ResourceLoader
   cwd: string
   agentDir: string
   settingsCwd?: string | null | undefined
   settingsManager: SettingsManager
   systemPrompt?: string | undefined
+  extensionFactories?: ExtensionFactory[] | undefined
 }) {
-  if (!options.settingsCwd) {
+  const extensionFactories = options.extensionFactories ?? []
+  if (!options.settingsCwd && extensionFactories.length === 0) {
     return undefined
   }
 
@@ -75,12 +82,17 @@ export async function createIsolatedRuntimeResourceLoader(options: {
     cwd: options.cwd,
     agentDir: options.agentDir,
     settingsManager: options.settingsManager,
-    noSkills: true,
+    ...(extensionFactories.length > 0 ? { extensionFactories } : {}),
+    ...(options.settingsCwd ? { noSkills: true } : {}),
     ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
-    additionalSkillPaths: [
-      path.join(options.settingsCwd, '.pi', 'skills'),
-      path.join(options.settingsCwd, '.agents', 'skills'),
-    ],
+    ...(options.settingsCwd
+      ? {
+          additionalSkillPaths: [
+            path.join(options.settingsCwd, '.pi', 'skills'),
+            path.join(options.settingsCwd, '.agents', 'skills'),
+          ],
+        }
+      : {}),
   })
   await resourceLoader.reload()
   return resourceLoader

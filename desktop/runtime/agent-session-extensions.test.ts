@@ -7,7 +7,9 @@ vi.mock('./headless-pi-theme.ts', () => ({
   applyHeadlessPiTheme: vi.fn(async () => undefined),
 }))
 
-type RegisteredCommand = ReturnType<PiRuntime['session']['extensionRunner']['getRegisteredCommands']>[number]
+type RegisteredCommand = ReturnType<
+  PiRuntime['session']['extensionRunner']['getRegisteredCommands']
+>[number]
 
 function createLifecycleSensitiveSession(options: { failBind?: boolean } = {}) {
   const commands: RegisteredCommand[] = []

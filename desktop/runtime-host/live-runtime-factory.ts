@@ -15,11 +15,14 @@ import {
   createRuntimeSettingsManager,
 } from '../runtime/isolated-settings-manager.ts'
 import type { PiRuntime } from '../runtime/types.ts'
+import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
 import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
 import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
-import { createPiAskUserQuestionsBridgeTools } from './pi-ui-bridge-host.ts'
-import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
+import {
+  createPiAskUserQuestionsBridgeTools,
+  createPiUiBridgeExtensionFactories,
+} from './pi-ui-bridge-host.ts'
 import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,
@@ -30,6 +33,46 @@ type LiveRuntimeFactoryHandlers = {
   reloadRuntimeSettingsIfSafe: (runtimeKey: string) => Promise<boolean>
   scheduleRuntimeDisposal: (runtimeKey: string) => void
   suspendRuntimeDisposal: (runtimeKey: string) => void
+}
+
+type NativeAskQuestionToolOptions = Parameters<typeof createNativeAskQuestionsTools>[0]
+
+type PiAskUserQuestionsBridgeToolOptions = Parameters<typeof createPiAskUserQuestionsBridgeTools>[0]
+
+function createRuntimeComposerPublisher(getRuntime: () => PiRuntime | null) {
+  return () => {
+    const activeRuntime = getRuntime()
+    if (!activeRuntime) return
+    void buildComposerState(activeRuntime).then((composer) => {
+      publishComposerUpdate(composer, {
+        projectId: activeRuntime.cwd,
+        sessionPath: activeRuntime.session.sessionFile,
+      })
+    })
+  }
+}
+
+async function createNativeAskQuestionToolsForRuntime(
+  options: NativeAskQuestionToolOptions & { enabledNativeExtensions: string[] },
+) {
+  if (!options.enabledNativeExtensions.includes('askQuestions')) return []
+  return await createNativeAskQuestionsTools({
+    defineTool: options.defineTool,
+    extensionPath: options.extensionPath,
+    getRuntime: options.getRuntime,
+    onStateChange: options.onStateChange,
+  })
+}
+
+async function createPiAskUserQuestionToolsForRuntime(
+  options: PiAskUserQuestionsBridgeToolOptions & { enabledNativeExtensions: string[] },
+) {
+  if (!options.enabledNativeExtensions.includes('askQuestions')) return []
+  return await createPiAskUserQuestionsBridgeTools({
+    agentDir: options.agentDir,
+    getRuntime: options.getRuntime,
+    onStateChange: options.onStateChange,
+  })
 }
 
 async function getEnabledNativeExtensionsForRuntime(options: {
@@ -82,6 +125,13 @@ export async function createLiveRuntime(
     settingsCwd: options.settingsCwd,
   })
   const sessionDir = options.sessionDir ?? settingsManager.getSessionDir() ?? undefined
+  let runtime: PiRuntime | null = null
+  const publishRuntimeComposerState = createRuntimeComposerPublisher(() => runtime)
+  const piBridgeExtensionFactories = await createPiUiBridgeExtensionFactories({
+    agentDir,
+    getRuntime: () => runtime,
+    onStateChange: publishRuntimeComposerState,
+  })
   const resourceLoader = await createIsolatedRuntimeResourceLoader({
     DefaultResourceLoader,
     cwd: options.cwd,
@@ -89,44 +139,24 @@ export async function createLiveRuntime(
     settingsCwd: options.settingsCwd,
     settingsManager,
     systemPrompt: getRuntimeSystemPrompt({ settingsCwd: options.settingsCwd }),
+    extensionFactories: piBridgeExtensionFactories,
   })
-  let runtime: PiRuntime | null = null
   const enabledNativeExtensions = await getEnabledNativeExtensionsForRuntime(
     options.sessionManager ? { sessionManager: options.sessionManager } : {},
   )
-  const nativeAskQuestionTools = enabledNativeExtensions.includes('askQuestions')
-    ? await createNativeAskQuestionsTools({
-        defineTool,
-        extensionPath: ensureAskQuestionsExtensionRuntimePath() ?? '',
-        getRuntime: () => runtime,
-        onStateChange: () => {
-          if (!runtime) return
-          const activeRuntime = runtime
-          void buildComposerState(activeRuntime).then((composer) => {
-            publishComposerUpdate(composer, {
-              projectId: activeRuntime.cwd,
-              sessionPath: activeRuntime.session.sessionFile,
-            })
-          })
-        },
-      })
-    : []
-  const piAskUserQuestionTools = enabledNativeExtensions.includes('askQuestions')
-    ? await createPiAskUserQuestionsBridgeTools({
-        agentDir,
-        getRuntime: () => runtime,
-        onStateChange: () => {
-          if (!runtime) return
-          const activeRuntime = runtime
-          void buildComposerState(activeRuntime).then((composer) => {
-            publishComposerUpdate(composer, {
-              projectId: activeRuntime.cwd,
-              sessionPath: activeRuntime.session.sessionFile,
-            })
-          })
-        },
-      })
-    : []
+  const nativeAskQuestionTools = await createNativeAskQuestionToolsForRuntime({
+    enabledNativeExtensions,
+    defineTool,
+    extensionPath: ensureAskQuestionsExtensionRuntimePath() ?? '',
+    getRuntime: () => runtime,
+    onStateChange: publishRuntimeComposerState,
+  })
+  const piAskUserQuestionTools = await createPiAskUserQuestionToolsForRuntime({
+    enabledNativeExtensions,
+    agentDir,
+    getRuntime: () => runtime,
+    onStateChange: publishRuntimeComposerState,
+  })
   const attachmentFileTools = options.settingsCwd
     ? createAttachmentFileTools({
         cwd: options.cwd,
@@ -192,19 +222,7 @@ export async function createLiveRuntime(
     isRuntimeExtensionCommandRunning,
     reloadRuntimeSettingsIfSafe: handlers.reloadRuntimeSettingsIfSafe,
   })
-  subscribeRuntimeWorkflowProgress(
-    runtime,
-    () => {
-      const activeRuntime = runtime
-      void buildComposerState(activeRuntime).then((composer) => {
-        publishComposerUpdate(composer, {
-          projectId: activeRuntime.cwd,
-          sessionPath: activeRuntime.session.sessionFile,
-        })
-      })
-    },
-    { agentDir },
-  )
+  subscribeRuntimeWorkflowProgress(runtime, publishRuntimeComposerState, { agentDir })
   return runtime
 }
 

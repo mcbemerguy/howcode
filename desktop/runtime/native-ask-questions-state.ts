@@ -15,7 +15,7 @@ export function getNativeAskQuestionsRequest(
   runtime: RuntimeLike,
 ): NativeAskQuestionsRequest | null {
   const request = getNativeInteractionRequest(runtime, nativeAskQuestionsKind)
-  if (!request || !isNativeAskQuestionsRequest(request.payload)) return null
+  if (!(request && isNativeAskQuestionsRequest(request.payload))) return null
   return request.payload
 }
 

@@ -32,11 +32,13 @@ export type NativeInteractionRequest = {
   kind: string
   title?: string | undefined
   payload: unknown
-  source?: {
-    extension?: string | undefined
-    toolCallId?: string | undefined
-    sessionId?: string | undefined
-  } | undefined
+  source?:
+    | {
+        extension?: string | undefined
+        toolCallId?: string | undefined
+        sessionId?: string | undefined
+      }
+    | undefined
 }
 
 export type PiAskUserQuestionsAlternative = {
@@ -69,6 +71,22 @@ export type PiAskUserQuestionsAnswer = {
 export type PiAskUserQuestionsResponse =
   | { status: 'denied' }
   | { status: 'confirmed'; answers: PiAskUserQuestionsAnswer[] }
+
+export type PiNotification = {
+  id: string
+  title: string
+  message: string
+  level: 'info' | 'warning' | 'error'
+  event: string | null
+  detailPath: string | null
+  detailKind: 'text' | 'workflow-jsonl' | null
+  createdAt: string
+  source: {
+    extension: string | null
+    toolCallId: string | null
+    sessionId: string | null
+  }
+}
 
 export type PiWorkflowProgressRun = {
   runId: string
@@ -113,6 +131,7 @@ export type ComposerState = {
   nativeInteractionRequests: NativeInteractionRequest[]
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
   workflowProgressRuns: PiWorkflowProgressRun[]
+  piNotifications: PiNotification[]
   contextUsage: ComposerContextUsage | null
   isCompacting: boolean
   isExtensionCommandRunning: boolean

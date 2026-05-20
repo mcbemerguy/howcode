@@ -46,6 +46,7 @@ export type {
   PiAskUserQuestionsPayload,
   PiAskUserQuestionsQuestion,
   PiAskUserQuestionsResponse,
+  PiNotification,
   PiWorkflowProgressRun,
 } from './desktop-composer-contracts'
 export type {

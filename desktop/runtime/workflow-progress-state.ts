@@ -11,7 +11,8 @@ const terminalRunRetentionMs = 60_000
 const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
 const artifactRecoveryLimit = 100
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
-const disposersByRuntime = new WeakMap<PiRuntime, () => void>()
+
+type RuntimeSessionLike = { session: { sessionFile?: string | undefined } }
 
 type RawWorkflowEvent = {
   type?: unknown
@@ -32,6 +33,10 @@ type RawWorkflowEvent = {
   timestamp?: unknown
 }
 
+function asRecord(value: unknown) {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
 function asString(value: unknown) {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
@@ -44,9 +49,21 @@ function asDetailKind(value: unknown) {
   return value === 'workflow-jsonl' || value === 'text' ? value : null
 }
 
+function unwrapWorkflowEvent(input: unknown) {
+  const record = asRecord(input)
+  if (!record || record['type'] !== workflowEventName) return input
+  const payload = asRecord(record['payload'])
+  if (!payload) return null
+  return {
+    ...payload,
+    timestamp: asString(payload['timestamp']) ?? asString(record['timestamp']) ?? undefined,
+  }
+}
+
 function normalizeEvent(input: unknown): RawWorkflowEvent | null {
-  if (!input || typeof input !== 'object') return null
-  const event = input as RawWorkflowEvent
+  const unwrapped = unwrapWorkflowEvent(input)
+  if (!unwrapped || typeof unwrapped !== 'object') return null
+  const event = unwrapped as RawWorkflowEvent
   if (!(asString(event.runId) && asString(event.workflowId) && asString(event.type))) return null
   return event
 }
@@ -132,6 +149,23 @@ function getSessionRuns(sessionPath: string) {
   return runs
 }
 
+export function recordRuntimeWorkflowProgressBridgeEvent(
+  runtime: RuntimeSessionLike,
+  input: unknown,
+) {
+  const sessionPath = runtime.session.sessionFile
+  if (!sessionPath) return false
+  const event = normalizeEvent(input)
+  if (!event) return false
+  const runId = asString(event.runId)
+  if (!runId) return false
+  const runs = getSessionRuns(sessionPath)
+  const next = applyWorkflowProgressEvent(runs.get(runId), event)
+  if (!next) return false
+  runs.set(runId, next)
+  return true
+}
+
 function isTerminalRunExpired(run: PiWorkflowProgressRun, nowMs: number) {
   if (!run.terminal) return false
   const updatedAtMs = Date.parse(run.updatedAt)
@@ -139,7 +173,7 @@ function isTerminalRunExpired(run: PiWorkflowProgressRun, nowMs: number) {
   return nowMs - updatedAtMs > terminalRunRetentionMs
 }
 
-export function getWorkflowProgressRuns(runtime: Pick<PiRuntime, 'session'>, nowMs = Date.now()) {
+export function getWorkflowProgressRuns(runtime: RuntimeSessionLike, nowMs = Date.now()) {
   const sessionPath = runtime.session.sessionFile
   if (!sessionPath) return []
   const runs = runsBySessionPath.get(sessionPath)
@@ -230,7 +264,6 @@ export function subscribeRuntimeWorkflowProgress(
   onStateChange: () => void,
   options: { agentDir?: string } = {},
 ) {
-  disposeRuntimeWorkflowProgress(runtime)
   const sessionPath = runtime.session.sessionFile
   if (!sessionPath) return () => undefined
 
@@ -246,32 +279,9 @@ export function subscribeRuntimeWorkflowProgress(
     }
   }
 
-  const eventBus = (
-    runtime.session.extensionRunner as unknown as {
-      runtime?: {
-        events?: { on: (channel: string, handler: (data: unknown) => void) => () => void }
-      }
-    }
-  ).runtime?.events
-  if (!eventBus) return () => undefined
-  const unsubscribe = eventBus.on(workflowEventName, (data: unknown) => {
-    const event = normalizeEvent(data)
-    if (!event) return
-    const runId = asString(event.runId)
-    if (!runId) return
-    const runs = getSessionRuns(sessionPath)
-    const next = applyWorkflowProgressEvent(runs.get(runId), event)
-    if (!next) return
-    runs.set(runId, next)
-    onStateChange()
-  })
-  disposersByRuntime.set(runtime, unsubscribe)
-  return unsubscribe
+  return () => undefined
 }
 
-export function disposeRuntimeWorkflowProgress(runtime: PiRuntime) {
-  const dispose = disposersByRuntime.get(runtime)
-  if (!dispose) return
-  dispose()
-  disposersByRuntime.delete(runtime)
+export function disposeRuntimeWorkflowProgress(_runtime: PiRuntime) {
+  return undefined
 }

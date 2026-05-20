@@ -25,8 +25,9 @@ import {
 } from './isolated-settings-manager.ts'
 import { getNativeAskQuestionsRequest } from './native-ask-questions-state.ts'
 import { getNativeInteractionRequests } from './native-interaction-state.ts'
-import { getWorkflowProgressRuns } from './workflow-progress-state.ts'
+import { getPiNotifications } from './pi-notification-state.ts'
 import type { PiRuntime } from './types.ts'
+import { getWorkflowProgressRuns } from './workflow-progress-state.ts'
 
 export const DEFAULT_COMPOSER_THINKING_LEVEL: ComposerThinkingLevel = 'medium'
 
@@ -239,7 +240,6 @@ export async function createComposerSnapshotSession(request: ComposerStateReques
     settingsManager,
     ...(resourceLoader ? { resourceLoader } : {}),
     sessionManager,
-    tools: [],
   })
 
   return {
@@ -278,6 +278,7 @@ export async function buildComposerStateSnapshot(
     nativeInteractionRequests: [],
     nativeAskQuestionsRequest: null,
     workflowProgressRuns: [],
+    piNotifications: [],
     contextUsage: snapshot.contextUsage,
     isCompacting: false,
     isExtensionCommandRunning: false,
@@ -305,6 +306,7 @@ export async function buildComposerState(
     nativeInteractionRequests: getNativeInteractionRequests(runtime),
     nativeAskQuestionsRequest: getNativeAskQuestionsRequest(runtime),
     workflowProgressRuns: getWorkflowProgressRuns(runtime),
+    piNotifications: getPiNotifications(runtime),
     contextUsage: getContextUsageForComposerState(runtime.session, options),
     isCompacting: runtime.session.isCompacting,
     isExtensionCommandRunning: isHeadlessExtensionCommandRunning(runtime.session),

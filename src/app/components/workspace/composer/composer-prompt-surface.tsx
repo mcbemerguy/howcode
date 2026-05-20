@@ -19,6 +19,7 @@ import {
   toPiAskUserQuestionsCardQuestions,
   toPiAskUserQuestionsResponse,
 } from './pi-ask-user-questions'
+import { PiNotificationCard } from './pi-notification-card'
 import { useAskQuestionsOverlayHeight } from './useAskQuestionsOverlayHeight'
 import { useComposerAskQuestionsActions } from './useComposerAskQuestionsActions'
 import { useComposerFileMentions } from './useComposerFileMentions'
@@ -74,6 +75,7 @@ export function ComposerPromptSurface({
   nativeAskQuestionsRequest,
   nativeInteractionRequests,
   workflowProgressRuns,
+  piNotifications,
   thinkingLevel,
   restoredQueuedPrompt,
   streamingBehaviorPreference,
@@ -337,6 +339,7 @@ export function ComposerPromptSurface({
       />
 
       <div className="relative grid gap-0 overflow-visible">
+        <PiNotificationCard notifications={piNotifications} />
         <WorkflowProgressCard
           runs={workflowProgressRuns}
           stopping={isSending}

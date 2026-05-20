@@ -25,8 +25,8 @@ import {
 } from '../runtime/composer-skill-references.ts'
 import { buildComposerState, buildComposerStateSnapshot } from '../runtime/composer-state.ts'
 import { stopComposerRuntime } from '../runtime/composer-stop.ts'
-import { answerNativeInteraction as answerNativeInteractionForRuntime } from '../runtime/native-interaction-state.ts'
 import { answerNativeAskQuestions as answerNativeAskQuestionsForRuntime } from '../runtime/native-ask-questions-state.ts'
+import { answerNativeInteraction as answerNativeInteractionForRuntime } from '../runtime/native-interaction-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
 import { getComposerSessionResources } from './composer-resource-service.ts'
 import {
