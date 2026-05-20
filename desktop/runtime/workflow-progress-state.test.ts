@@ -549,6 +549,7 @@ describe('workflow progress state', () => {
     writeRunJsonFixture(runDir, cwd, {
       id: 'terminal-summary-run',
       status: 'completed',
+      currentStepIndex: 1,
       endedAt: '2026-05-19T00:00:05.000Z',
       steps: [
         {
@@ -557,6 +558,14 @@ describe('workflow progress state', () => {
           status: 'completed',
           type: 'agent',
           startedAt: '2026-05-19T00:00:01.000Z',
+          endedAt: '2026-05-19T00:00:03.000Z',
+        },
+        {
+          id: 'double-check-and-fix',
+          index: 1,
+          status: 'completed',
+          type: 'agent',
+          startedAt: '2026-05-19T00:00:03.000Z',
           endedAt: '2026-05-19T00:00:05.000Z',
         },
       ],
@@ -585,6 +594,7 @@ describe('workflow progress state', () => {
           status: 'running',
           activity: 'Still running in stale events',
           currentTool: 'bash',
+          childSessionId: 'stale-child-session',
         }),
       ].join('\n'),
     )
@@ -599,10 +609,13 @@ describe('workflow progress state', () => {
       {
         runId: 'terminal-summary-run',
         workflowId: 'review-fix',
-        currentStepId: 'code',
+        currentStepId: 'double-check-and-fix',
+        currentStepType: 'agent',
         currentStepStatus: null,
         status: 'completed',
         activity: 'completed',
+        currentTool: null,
+        childSessionId: null,
         detailPath: eventsPath,
         terminal: true,
       },

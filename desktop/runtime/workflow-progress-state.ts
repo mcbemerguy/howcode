@@ -467,8 +467,12 @@ function mergeRecoveredRunJsonAndEvents(
   }
   if (runJsonIsTerminal) {
     merged.status = summary.run.status
-    merged.currentStepStatus = null
+    merged.currentStepId = summary.run.currentStepId
+    merged.currentStepType = summary.run.currentStepType
+    merged.currentStepStatus = summary.run.currentStepStatus
     merged.activity = summary.run.activity
+    merged.currentTool = summary.run.currentTool
+    merged.childSessionId = summary.run.childSessionId
     merged.elapsedMs = summary.run.elapsedMs
     merged.error = summary.run.error
     merged.updatedAt = summary.run.updatedAt
