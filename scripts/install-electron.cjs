@@ -85,11 +85,16 @@ async function extractZip(zipPath, distPath) {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
-        zipPath,
-        distPath,
+        "$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath $env:HOWCODE_ELECTRON_ZIP -DestinationPath $env:HOWCODE_ELECTRON_DIST -Force",
       ],
-      { stdio: 'inherit' },
+      {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          HOWCODE_ELECTRON_ZIP: zipPath,
+          HOWCODE_ELECTRON_DIST: distPath,
+        },
+      },
     )
     return
   }
