@@ -31,6 +31,7 @@ function publishRuntimeExtensionCommandState(
       publishComposerUpdate(composer, {
         projectId: runtime.cwd,
         sessionPath: runtime.session.sessionFile,
+        runtime,
       }),
     )
     .catch((error) => console.warn('Failed to publish extension command state', error))

@@ -24,7 +24,7 @@ import {
   compactComposerRuntime,
   promptComposerRuntime,
 } from './composer-prompt-flow.ts'
-import { rememberLocalDraftSessionAlias } from './composer-session-aliases.ts'
+import { rememberRuntimeLocalDraftSessionAlias } from './composer-session-aliases.ts'
 import { buildComposerState, buildComposerStateSnapshot } from './composer-state.ts'
 import { stopComposerRuntime } from './composer-stop.ts'
 import {
@@ -177,7 +177,8 @@ export async function sendComposerPrompt(
 
   const runSend = async (runtime: Awaited<ReturnType<typeof getOrCreateRuntimeForSessionPath>>) => {
     const rememberRuntimeLocalDraftAlias = () => {
-      rememberLocalDraftSessionAlias({
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
         persistedSessionPath: runtime.session.sessionFile,
         localDraftSessionPath,
       })
@@ -233,7 +234,8 @@ export async function sendComposerPrompt(
       { chatGroupId: request.chatGroupId ?? null },
     )
     if (localDraftSessionPath) {
-      rememberLocalDraftSessionAlias({
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
         persistedSessionPath: runtime.session.sessionFile,
         localDraftSessionPath,
       })

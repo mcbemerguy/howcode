@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { ComposerState, DesktopEvent } from '../../shared/desktop-contracts.ts'
 import { createLocalThreadDraft } from '../../shared/session-paths.ts'
+import { rememberRuntimeLocalDraftSessionAlias } from '../runtime/composer-session-aliases.ts'
 import { setRuntimeHostEventSink } from './host-events.ts'
 import { sendComposerPrompt } from './live-runtime-service.ts'
+import { bindRuntimeExtensionHandlers } from './runtime-extension-bindings.ts'
 
 function composerState(overrides: Partial<ComposerState> = {}): ComposerState {
   return {
@@ -32,10 +34,17 @@ const mocks = vi.hoisted(() => ({
   getCachedRuntimeForSessionPath: vi.fn(),
   getOrCreateRuntimeForSessionPath: vi.fn(),
   promptComposerRuntime: vi.fn(),
+  bindHeadlessAgentSessionExtensions: vi.fn(),
+  refreshHeadlessAgentSessionExtensionBindings: vi.fn(),
 }))
 
 vi.mock('../app-settings/readers.ts', () => ({
   loadAppSettings: () => ({ composerStreamingBehavior: 'steer' }),
+}))
+
+vi.mock('../runtime/agent-session-extensions.ts', () => ({
+  bindHeadlessAgentSessionExtensions: mocks.bindHeadlessAgentSessionExtensions,
+  refreshHeadlessAgentSessionExtensionBindings: mocks.refreshHeadlessAgentSessionExtensionBindings,
 }))
 
 vi.mock('../runtime/composer-mode-settings.ts', () => ({
@@ -155,6 +164,48 @@ describe('runtime-host local draft composer aliases', () => {
     })
 
     expect(events).toContainEqual({
+      type: 'composer-update',
+      projectId,
+      sessionPath: persistedSessionPath,
+      localDraftSessionPath: draft.sessionPath,
+      composer: workflowComposer,
+    })
+  })
+
+  test('emits local draft aliases for extension command state updates', async () => {
+    const projectId = '/repo/project-extension-state'
+    const persistedSessionPath = '/repo/project-extension-state/.pi/sessions/persisted.jsonl'
+    const draft = createLocalThreadDraft(projectId, 'extension-draft')
+    const events: DesktopEvent[] = []
+    setRuntimeHostEventSink((event) => events.push(event))
+
+    const workflowComposer = composerState({ isExtensionCommandRunning: true })
+    const piRuntime = {
+      cwd: projectId,
+      chatGroupId: null,
+      session: {
+        sessionFile: persistedSessionPath,
+        sessionId: 'thread-extension-state',
+        isStreaming: false,
+        isCompacting: false,
+      },
+    }
+    rememberRuntimeLocalDraftSessionAlias({
+      runtime: piRuntime,
+      persistedSessionPath,
+      localDraftSessionPath: draft.sessionPath,
+    })
+    mocks.buildComposerState.mockResolvedValue(workflowComposer)
+
+    await bindRuntimeExtensionHandlers(piRuntime as never, {
+      isRuntimeExtensionCommandRunning: () => true,
+      reloadRuntimeSettingsIfSafe: vi.fn(),
+    })
+    const binding = mocks.bindHeadlessAgentSessionExtensions.mock.calls[0]?.[1]
+    binding?.onExtensionCommandStateChange?.()
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+
+    expect(events[0]).toEqual({
       type: 'composer-update',
       projectId,
       sessionPath: persistedSessionPath,

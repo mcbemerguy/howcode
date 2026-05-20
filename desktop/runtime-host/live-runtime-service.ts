@@ -23,7 +23,7 @@ import {
   compactComposerRuntime,
   promptComposerRuntime,
 } from '../runtime/composer-prompt-flow.ts'
-import { rememberLocalDraftSessionAlias } from '../runtime/composer-session-aliases.ts'
+import { rememberRuntimeLocalDraftSessionAlias } from '../runtime/composer-session-aliases.ts'
 import {
   expandRuntimeDollarSkillReferences,
   mapSessionSkills,
@@ -174,7 +174,8 @@ export async function sendComposerPrompt(
   const compactInstructions = parseCompactSlashCommand(request.text)
   const runSend = async (runtime: PiRuntime) => {
     const rememberRuntimeLocalDraftAlias = () => {
-      rememberLocalDraftSessionAlias({
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
         persistedSessionPath: runtime.session.sessionFile,
         localDraftSessionPath,
       })
@@ -232,7 +233,8 @@ export async function sendComposerPrompt(
       { chatGroupId: request.chatGroupId ?? null },
     )
     if (localDraftSessionPath) {
-      rememberLocalDraftSessionAlias({
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
         persistedSessionPath: runtime.session.sessionFile,
         localDraftSessionPath,
       })
