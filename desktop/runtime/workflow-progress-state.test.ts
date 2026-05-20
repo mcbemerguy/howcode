@@ -308,4 +308,42 @@ describe('workflow progress state', () => {
       },
     ])
   })
+
+  test.skipIf(process.platform === 'win32' || process.platform === 'darwin')(
+    'does not recover artifacts from a different project path that only differs by case',
+    () => {
+      const agentDir = mkdtempSync(join(tmpdir(), 'howcode-agent-dir-'))
+      const artifactCwd = join(agentDir, 'project')
+      const runtimeCwd = join(agentDir, 'Project')
+      const runDir = join(agentDir, 'workflow-runs', 'review-fix-case')
+      mkdirSync(runDir, { recursive: true })
+      writeFileSync(
+        join(runDir, 'events.jsonl'),
+        [
+          JSON.stringify({
+            timestamp: '2026-05-19T00:00:00.000Z',
+            type: 'artifact_initialized',
+            runId: 'review-fix-case',
+            workflowId: 'review-fix',
+            cwd: artifactCwd,
+          }),
+          JSON.stringify({
+            timestamp: '2026-05-19T00:00:01.000Z',
+            type: 'step_update',
+            runId: 'review-fix-case',
+            workflowId: 'review-fix',
+            status: 'running',
+          }),
+        ].join('\n'),
+      )
+
+      expect(
+        recoverWorkflowProgressFromArtifacts({
+          agentDir,
+          cwd: runtimeCwd,
+          nowMs: Date.now(),
+        }),
+      ).toEqual([])
+    },
+  )
 })

@@ -224,8 +224,15 @@ export function recoverWorkflowProgressFromEventsFile(eventsPath: string) {
   return recoverWorkflowProgressArtifact(eventsPath)?.run ?? null
 }
 
+function normalizeComparablePath(value: string) {
+  const resolved = resolve(value)
+  return process.platform === 'win32' || process.platform === 'darwin'
+    ? resolved.toLowerCase()
+    : resolved
+}
+
 function samePath(left: string, right: string) {
-  return resolve(left).toLocaleLowerCase() === resolve(right).toLocaleLowerCase()
+  return normalizeComparablePath(left) === normalizeComparablePath(right)
 }
 
 export function recoverWorkflowProgressFromArtifacts(options: {
