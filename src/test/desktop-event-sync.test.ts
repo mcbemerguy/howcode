@@ -77,6 +77,7 @@ describe('desktop event selection helpers', () => {
                 activity: 'Running code',
                 currentTool: null,
                 childSessionId: null,
+                childSessionPath: null,
                 elapsedMs: 1000,
                 error: null,
                 updatedAt: '2026-05-20T00:00:00.000Z',

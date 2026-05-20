@@ -103,6 +103,7 @@ export type PiWorkflowProgressRun = {
   activity: string | null
   currentTool: string | null
   childSessionId: string | null
+  childSessionPath: string | null
   elapsedMs: number | null
   error: string | null
   updatedAt: string

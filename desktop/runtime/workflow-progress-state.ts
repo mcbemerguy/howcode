@@ -36,6 +36,7 @@ type RawWorkflowEvent = {
   activity?: unknown
   currentTool?: unknown
   childSessionId?: unknown
+  childSessionPath?: unknown
   detailPath?: unknown
   detailKind?: unknown
   error?: unknown
@@ -85,6 +86,8 @@ type RunJsonStepRecord = Record<string, unknown> & {
   startedAt?: unknown
   status?: unknown
   type?: unknown
+  childSessionId?: unknown
+  childSessionPath?: unknown
 }
 
 function asRecord(value: unknown) {
@@ -162,6 +165,7 @@ function getRunActivity(previous: PiWorkflowProgressRun | undefined, event: RawW
   return {
     activity: asString(event.activity) ?? previous?.activity ?? null,
     childSessionId: asString(event.childSessionId) ?? previous?.childSessionId ?? null,
+    childSessionPath: asString(event.childSessionPath) ?? previous?.childSessionPath ?? null,
     currentTool: asString(event.currentTool) ?? previous?.currentTool ?? null,
     error: asString(event.error) ?? previous?.error ?? null,
   }
@@ -379,7 +383,8 @@ function recoverRunJsonArtifact(
       status,
       activity: stepActivity(step, status, terminal),
       currentTool: null,
-      childSessionId: null,
+      childSessionId: step ? asString(step.childSessionId) : null,
+      childSessionPath: step ? asString(step.childSessionPath) : null,
       ...getRunJsonTiming(run, step, candidate, nowMs),
       error: asString(run.error),
       terminal,
@@ -473,6 +478,7 @@ function mergeRecoveredRunJsonAndEvents(
     merged.activity = summary.run.activity
     merged.currentTool = summary.run.currentTool
     merged.childSessionId = summary.run.childSessionId
+    merged.childSessionPath = summary.run.childSessionPath
     merged.elapsedMs = summary.run.elapsedMs
     merged.error = summary.run.error
     merged.updatedAt = summary.run.updatedAt

@@ -81,6 +81,8 @@ function writeRunJsonFixture(runDir: string, cwd: string, overrides: Record<stri
         status: 'running',
         type: 'agent',
         startedAt: '2026-05-19T00:00:01.000Z',
+        childSessionId: 'run-json-child',
+        childSessionPath: join(runDir, 'sessions', 'run-json-child.jsonl'),
       },
     ],
     ...overrides,
@@ -113,6 +115,7 @@ describe('workflow progress state', () => {
       activity: 'Running tool',
       currentTool: 'bash',
       childSessionId: 'child-1',
+      childSessionPath: '/tmp/run-1/sessions/child-1.jsonl',
       elapsedMs: 1234,
     })
 
@@ -125,6 +128,7 @@ describe('workflow progress state', () => {
       activity: 'Running tool',
       currentTool: 'bash',
       childSessionId: 'child-1',
+      childSessionPath: '/tmp/run-1/sessions/child-1.jsonl',
       elapsedMs: 1234,
       terminal: false,
     })
@@ -255,6 +259,8 @@ describe('workflow progress state', () => {
       status: 'running',
       activity: 'Running code step',
       currentTool: 'bash',
+      childSessionId: 'bridge-child',
+      childSessionPath: '/tmp/bridge-run/sessions/bridge-child.jsonl',
       elapsedMs: 42,
     })
 
@@ -268,6 +274,8 @@ describe('workflow progress state', () => {
         currentStepStatus: 'running',
         activity: 'Running code step',
         currentTool: 'bash',
+        childSessionId: 'bridge-child',
+        childSessionPath: '/tmp/bridge-run/sessions/bridge-child.jsonl',
       },
     ])
 
@@ -299,6 +307,8 @@ describe('workflow progress state', () => {
           workflowId: 'code-review-fix',
           stepId: 'code',
           status: 'completed',
+          childSessionId: 'events-child',
+          childSessionPath: join(directory, 'sessions', 'events-child.jsonl'),
           elapsedMs: 1000,
         }),
         JSON.stringify({
@@ -318,6 +328,8 @@ describe('workflow progress state', () => {
       auditPath: join(directory, 'audit.md'),
       detailPath: eventsPath,
       status: 'completed',
+      childSessionId: 'events-child',
+      childSessionPath: join(directory, 'sessions', 'events-child.jsonl'),
       elapsedMs: 2000,
       terminal: true,
     })
@@ -347,6 +359,8 @@ describe('workflow progress state', () => {
           stepId: 'code',
           status: 'running',
           activity: 'Running code step',
+          childSessionId: 'artifact-child',
+          childSessionPath: join(runDir, 'sessions', 'artifact-child.jsonl'),
         }),
       ].join('\n'),
     )
@@ -363,6 +377,7 @@ describe('workflow progress state', () => {
         workflowId: 'review-fix',
         currentStepId: 'code',
         status: 'running',
+        childSessionPath: join(runDir, 'sessions', 'artifact-child.jsonl'),
         detailPath: eventsPath,
       },
     ])
@@ -395,6 +410,8 @@ describe('workflow progress state', () => {
           workflowId: 'code-review-fix',
           currentStepId: 'code',
           status: 'running',
+          childSessionId: 'run-json-child',
+          childSessionPath: join(runDir, 'sessions', 'run-json-child.jsonl'),
           detailPath: eventsPath,
           detailKind: 'workflow-jsonl',
         },
@@ -464,6 +481,7 @@ describe('workflow progress state', () => {
           activity: 'Running review step',
           currentTool: 'bash',
           childSessionId: 'child-overlay',
+          childSessionPath: join(runDir, 'sessions', 'child-overlay.jsonl'),
           elapsedMs: 2000,
         }),
       ].join('\n'),
@@ -483,6 +501,7 @@ describe('workflow progress state', () => {
         activity: 'Running review step',
         currentTool: 'bash',
         childSessionId: 'child-overlay',
+        childSessionPath: join(runDir, 'sessions', 'child-overlay.jsonl'),
         elapsedMs: 2000,
       },
     ])
@@ -616,6 +635,7 @@ describe('workflow progress state', () => {
         activity: 'completed',
         currentTool: null,
         childSessionId: null,
+        childSessionPath: null,
         detailPath: eventsPath,
         terminal: true,
       },
