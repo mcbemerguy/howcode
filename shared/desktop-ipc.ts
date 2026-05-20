@@ -270,6 +270,7 @@ export type DesktopRequestMap = {
     response: ThreadSearchResult
   }
   watchSession: { params: { sessionPath: string | null }; response: { ok: boolean } }
+  watchWorkflowStepSession: { params: { sessionPath: string | null }; response: { ok: boolean } }
   invokeAction: {
     params: { action: DesktopAction; payload?: AnyDesktopActionPayload | undefined }
     response: DesktopActionResult

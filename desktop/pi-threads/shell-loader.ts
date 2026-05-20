@@ -30,7 +30,11 @@ import {
   loadProjectGitState,
 } from '../project-git.ts'
 import { shutdownRuntimeHosts } from '../runtime-host/client-bridge.ts'
-import { disposeSessionWatcher, setWatchedSessionPath } from './session-watch.ts'
+import {
+  disposeSessionWatcher,
+  setWatchedSessionPath,
+  setWatchedWorkflowStepSessionPath,
+} from './session-watch.ts'
 
 export { refreshShellIndex } from './shell-index.ts'
 export { loadShellState } from './shell-state.ts'
@@ -90,6 +94,7 @@ export {
   loadProjectDiffStats,
   loadProjectGitState,
   setWatchedSessionPath,
+  setWatchedWorkflowStepSessionPath,
 }
 
 export const subscribeDesktopEvents = subscribeRuntimeEvents

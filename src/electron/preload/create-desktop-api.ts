@@ -192,6 +192,9 @@ function createArtifactAndThreadApi() {
     watchSession: async (sessionPath: string | null) => {
       await invokeRequest('watchSession', { sessionPath })
     },
+    watchWorkflowStepSession: async (sessionPath: string | null) => {
+      await invokeRequest('watchWorkflowStepSession', { sessionPath })
+    },
   }
 }
 

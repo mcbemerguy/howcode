@@ -47,19 +47,21 @@ function normalizeExternalThreadData(thread: ThreadData) {
   return setThreadCompactingState(setThreadStreamingState(thread, false), false)
 }
 
+type WatchedThreadUpdate = {
+  lastModifiedMs: number
+  projectId: string
+  sessionPath: string
+  thread: ThreadData
+  threadId: string
+}
+
 export async function publishExternalThreadUpdate({
   lastModifiedMs,
   projectId,
   sessionPath,
   thread,
   threadId,
-}: {
-  lastModifiedMs: number
-  projectId: string
-  sessionPath: string
-  thread: ThreadData
-  threadId: string
-}) {
+}: WatchedThreadUpdate) {
   thread = normalizeExternalThreadData(thread)
   rememberLiveThread(sessionPath, thread)
   rememberSessionPath(sessionPath, projectId)
@@ -92,6 +94,25 @@ export async function publishExternalThreadUpdate({
   emitDesktopEvent({
     type: 'thread-update',
     reason: 'external',
+    projectId,
+    threadId,
+    sessionPath,
+    thread,
+    composer: null,
+  })
+}
+
+export async function publishWorkflowStepThreadUpdate({
+  projectId,
+  sessionPath,
+  thread,
+  threadId,
+}: WatchedThreadUpdate) {
+  thread = normalizeExternalThreadData(thread)
+  rememberLiveThread(sessionPath, thread)
+  emitDesktopEvent({
+    type: 'thread-update',
+    reason: 'workflow-step',
     projectId,
     threadId,
     sessionPath,

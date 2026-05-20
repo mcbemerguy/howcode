@@ -35,6 +35,7 @@ export {
   loadShellState,
   removeDictationModel,
   setWatchedSessionPath,
+  setWatchedWorkflowStepSessionPath,
   subscribeDesktopEvents,
   transcribeDictation,
 } from './pi-threads/shell-loader.ts'

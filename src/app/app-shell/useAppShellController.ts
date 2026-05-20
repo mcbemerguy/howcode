@@ -15,6 +15,7 @@ import { useProjectRepoOriginRefresh } from './useProjectRepoOriginRefresh'
 import { useRunningTerminalSessions } from './useRunningTerminalSessions'
 import { useScopedProjectViewSync } from './useScopedProjectViewSync'
 import { useSelectedThreadData } from './useSelectedThreadData'
+import { selectActiveWorkflowStepSession } from './workflow-step-session'
 
 export function useAppShellController() {
   const queryClient = useQueryClient()
@@ -24,11 +25,15 @@ export function useAppShellController() {
   const desktopShell = useDesktopShell()
   const invokeDesktopAction = useDesktopBridge()
   const projects = desktopShell.shellState?.projects ?? []
+  const visibleComposerState = bundle.composerState ?? desktopShell.shellState?.composer ?? null
+  const activeWorkflowStepSession = selectActiveWorkflowStepSession(visibleComposerState)
+  const selectedThreadSessionPath =
+    activeWorkflowStepSession?.sessionPath ?? bundle.state.selectedSessionPath
   const selectedThread = useSelectedThreadData({
-    liveThreadData: bundle.liveThreadData,
-    selectedSessionPath: bundle.state.selectedSessionPath,
-    threadHistoryCompactions: bundle.threadHistoryCompactions,
-    threadQueryDeferred: bundle.threadQueryDeferred,
+    liveThreadData: activeWorkflowStepSession ? null : bundle.liveThreadData,
+    selectedSessionPath: selectedThreadSessionPath,
+    threadHistoryCompactions: activeWorkflowStepSession ? 0 : bundle.threadHistoryCompactions,
+    threadQueryDeferred: activeWorkflowStepSession ? false : bundle.threadQueryDeferred,
     threadRefreshKey: bundle.threadRefreshKey,
   })
   const inboxQuery = useDesktopInbox()
@@ -47,15 +52,17 @@ export function useAppShellController() {
         workspaceState: bundle.state,
         threadData: selectedThread.effectiveThreadData,
         shellCwd: desktopShell.shellState?.cwd,
-        composerState: bundle.composerState,
-        shellComposerState: desktopShell.shellState?.composer,
+        composerState: visibleComposerState,
+        displaySessionPath: selectedThreadSessionPath,
+        shellComposerState: null,
       }),
     [
-      bundle.composerState,
+      visibleComposerState,
       bundle.state,
       desktopShell.shellState,
       projects,
       selectedThread.effectiveThreadData,
+      selectedThreadSessionPath,
     ],
   )
   useAppShellEffects({
@@ -66,6 +73,7 @@ export function useAppShellController() {
     composerProjectId: viewModel.composerProjectId,
     shellComposerState: desktopShell.shellState?.composer,
     shellAppSettings: desktopShell.shellState?.appSettings,
+    workflowStepSessionPath: activeWorkflowStepSession?.sessionPath ?? null,
     loadProjectThreads: desktopShell.loadProjectThreads,
     loadArchivedThreads: desktopShell.loadArchivedThreads,
     loadComposerState: desktopShell.loadComposerState,
@@ -142,6 +150,7 @@ export function useAppShellController() {
   return {
     ...viewModel,
     activeThreadLoading: selectedThread.activeThreadLoading,
+    activeWorkflowStepSession,
     archivedThreads: bundle.archivedThreads,
     handleAction: actions.handleAction,
     ...commands,
