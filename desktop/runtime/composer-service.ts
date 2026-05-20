@@ -7,7 +7,11 @@ import type {
   ComposerThinkingLevel,
 } from '../../shared/desktop-contracts.ts'
 import { getDesktopWorkingDirectory } from '../../shared/desktop-working-directory.ts'
-import { createLocalThreadDraft, getPersistedSessionPath } from '../../shared/session-paths.ts'
+import {
+  createLocalThreadDraft,
+  getPersistedSessionPath,
+  isLocalSessionPath,
+} from '../../shared/session-paths.ts'
 import { loadAppSettings } from '../app-settings/readers.ts'
 import { dequeueComposerPromptFromRuntime } from './composer-dequeue.ts'
 import {
@@ -20,6 +24,7 @@ import {
   compactComposerRuntime,
   promptComposerRuntime,
 } from './composer-prompt-flow.ts'
+import { rememberLocalDraftSessionAlias } from './composer-session-aliases.ts'
 import { buildComposerState, buildComposerStateSnapshot } from './composer-state.ts'
 import { stopComposerRuntime } from './composer-stop.ts'
 import {
@@ -207,6 +212,12 @@ export async function sendComposerPrompt(
       request.composerSessionDir,
       { chatGroupId: request.chatGroupId ?? null },
     )
+    if (isLocalSessionPath(request.sessionPath)) {
+      rememberLocalDraftSessionAlias({
+        persistedSessionPath: runtime.session.sessionFile,
+        localDraftSessionPath: request.sessionPath,
+      })
+    }
     await applyComposerModeSettings(runtime, request)
     return await runSend(runtime)
   }

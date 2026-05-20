@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { isLocalSessionPath } from '../../../shared/session-paths'
 import type {
   ChatSidebarState,
   ComposerState,
@@ -54,13 +55,24 @@ export type DesktopEventSyncRuntime = Omit<
   localDraftSessionPathByPersistedSessionPathRef: React.RefObject<Map<string, string>>
 }
 
-function shouldApplyComposerUpdate(input: {
+export function shouldApplyComposerUpdate(input: {
   event: Extract<DesktopEvent, { type: 'composer-update' }>
   latestComposerProjectId: string
   latestWorkspaceState: DesktopEventSelectionState
   localDraftSessionPathByPersistedSessionPathRef: React.RefObject<Map<string, string>>
   visibleSessionPath: string | null
 }) {
+  if (
+    input.event.sessionPath &&
+    input.event.localDraftSessionPath &&
+    isLocalSessionPath(input.event.localDraftSessionPath)
+  ) {
+    input.localDraftSessionPathByPersistedSessionPathRef.current.set(
+      input.event.sessionPath,
+      input.event.localDraftSessionPath,
+    )
+  }
+
   const aliasedLocalDraftSessionPath = input.event.sessionPath
     ? input.localDraftSessionPathByPersistedSessionPathRef.current.get(input.event.sessionPath)
     : null
@@ -276,7 +288,11 @@ function handleThreadUpdateEvent(
   })
   if (flags.isCompactionThreadUpdate && flags.isVisibleThreadUpdate)
     runtime.setThreadHistoryCompactions(0)
-  if (event.composer && event.sessionPath === visibleSessionPath)
+  if (
+    event.composer &&
+    (event.sessionPath === visibleSessionPath ||
+      aliasedLocalDraftSessionPath === latestWorkspaceState.selectedSessionPath)
+  )
     runtime.setComposerState(event.composer)
   if (
     event.reason === 'start' ||

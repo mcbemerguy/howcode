@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createLocalThreadDraft } from '../../shared/session-paths'
+import { shouldApplyComposerUpdate } from '../app/app-shell/desktop-event-handlers'
 import {
   type DesktopEventSelectionState,
   getVisibleDesktopSessionPath,
   shouldAutoOpenStartedThread,
   shouldDisplayStartedThreadForLocalDraft,
 } from '../app/app-shell/desktop-event-sync'
+import type { ComposerState, DesktopEvent } from '../app/desktop/types'
 
 function selectionState(
   overrides: Partial<DesktopEventSelectionState> = {},
@@ -20,7 +22,101 @@ function selectionState(
   }
 }
 
+function composerState(overrides: Partial<ComposerState> = {}): ComposerState {
+  return {
+    currentModel: null,
+    availableModels: [],
+    currentThinkingLevel: 'off',
+    availableThinkingLevels: [],
+    queuedPrompts: [],
+    nativeInteractionRequests: [],
+    nativeAskQuestionsRequest: null,
+    workflowProgressRuns: [],
+    piNotifications: [],
+    contextUsage: null,
+    isCompacting: false,
+    isExtensionCommandRunning: false,
+    ...overrides,
+  }
+}
+
+function composerUpdateEvent(
+  overrides: Partial<Extract<DesktopEvent, { type: 'composer-update' }>> = {},
+): Extract<DesktopEvent, { type: 'composer-update' }> {
+  return {
+    type: 'composer-update',
+    projectId: '/repo/project-a',
+    sessionPath: '/sessions/project-a.jsonl',
+    composer: composerState(),
+    ...overrides,
+  }
+}
+
 describe('desktop event selection helpers', () => {
+  it('applies persisted workflow composer updates to their visible local draft alias', () => {
+    const draft = createLocalThreadDraft('/repo/project-a', 'draft')
+    const aliasesRef = { current: new Map<string, string>() }
+
+    expect(
+      shouldApplyComposerUpdate({
+        event: composerUpdateEvent({
+          localDraftSessionPath: draft.sessionPath,
+          composer: composerState({
+            workflowProgressRuns: [
+              {
+                runId: 'run-1',
+                workflowId: 'review-fix',
+                runDir: null,
+                auditPath: null,
+                detailPath: null,
+                detailKind: null,
+                currentStepId: 'code',
+                currentStepType: 'agent',
+                currentStepStatus: 'running',
+                status: 'running',
+                activity: 'Running code',
+                currentTool: null,
+                childSessionId: null,
+                elapsedMs: 1000,
+                error: null,
+                updatedAt: '2026-05-20T00:00:00.000Z',
+                terminal: false,
+              },
+            ],
+          }),
+        }),
+        latestComposerProjectId: draft.projectId,
+        latestWorkspaceState: selectionState({
+          activeView: 'thread',
+          selectedProjectId: draft.projectId,
+          selectedSessionPath: draft.sessionPath,
+        }),
+        localDraftSessionPathByPersistedSessionPathRef: aliasesRef,
+        visibleSessionPath: null,
+      }),
+    ).toBe(true)
+    expect(aliasesRef.current.get('/sessions/project-a.jsonl')).toBe(draft.sessionPath)
+  })
+
+  it('does not apply persisted composer updates to an unrelated visible local draft', () => {
+    const selectedDraft = createLocalThreadDraft('/repo/project-a', 'selected')
+    const otherDraft = createLocalThreadDraft('/repo/project-a', 'other')
+
+    expect(
+      shouldApplyComposerUpdate({
+        event: composerUpdateEvent({ localDraftSessionPath: otherDraft.sessionPath }),
+        latestComposerProjectId: selectedDraft.projectId,
+        latestWorkspaceState: selectionState({
+          activeView: 'thread',
+          selectedProjectId: selectedDraft.projectId,
+          selectedSessionPath: selectedDraft.sessionPath,
+        }),
+        localDraftSessionPathByPersistedSessionPathRef: { current: new Map() },
+        visibleSessionPath: null,
+      }),
+    ).toBe(false)
+  })
+
   it('does not treat a local draft thread as a visible persisted session', () => {
     const draft = createLocalThreadDraft('/repo/project-b', 'draft')
 
