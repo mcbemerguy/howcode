@@ -28,7 +28,7 @@
     "pack:howcode": "cd packages/howcode && npm pack",
     "publish:howcode:dry-run": "cd packages/howcode && npm publish --dry-run",
     "preview": "vite preview",
-    "prepare": "test -d .git && husky || true",
+    "prepare": "node ./scripts/prepare-husky.cjs",
     "postinstall": "node ./scripts/install-electron.cjs && node ./scripts/install-app-deps.cjs",
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
