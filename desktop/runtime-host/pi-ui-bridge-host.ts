@@ -61,11 +61,8 @@ type UiBridgeHost = {
   emitEvent?: (event: UiBridgeEvent) => void | Promise<void>
 }
 
-type AskUserQuestionsModule = {
+type PiUiBridgeEmbeddedModule = {
   createAskUserQuestionsTool: (options: { host?: UiBridgeHost }) => unknown
-}
-
-type UiBridgeEventForwarderModule = {
   createUiBridgeEventForwardingExtension: (options: {
     host?: UiBridgeHost
     source?: { extension?: string; toolCallId?: string; sessionId?: string }
@@ -75,6 +72,36 @@ type UiBridgeEventForwarderModule = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isPiUiBridgeEmbeddedModule(value: unknown): value is PiUiBridgeEmbeddedModule {
+  if (!isRecord(value)) return false
+  const candidate = value as Partial<PiUiBridgeEmbeddedModule>
+  return (
+    typeof candidate.createAskUserQuestionsTool === 'function' &&
+    typeof candidate.createUiBridgeEventForwardingExtension === 'function'
+  )
+}
+
+async function loadPiUiBridgeEmbeddedModule(agentDir: string) {
+  const entrypoint = path.join(agentDir, 'ui-bridge/embedded.ts')
+  let module: unknown
+  try {
+    module = await import(pathToFileURL(entrypoint).href)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `Configured Pi agent directory does not provide the embedded UI bridge API at ui-bridge/embedded.ts. Upgrade Pi or choose an agent directory with Phase 5 bridge support. Import failed: ${reason}`,
+    )
+  }
+
+  if (!isPiUiBridgeEmbeddedModule(module)) {
+    throw new Error(
+      'Configured Pi agent directory has ui-bridge/embedded.ts but it does not export createAskUserQuestionsTool and createUiBridgeEventForwardingExtension. Upgrade Pi or choose a compatible agent directory.',
+    )
+  }
+
+  return module
 }
 
 function isPiAskUserQuestionsQuestion(value: unknown): value is PiAskUserQuestionsQuestion {
@@ -252,9 +279,8 @@ async function createPiAskUserQuestionsBridgeTools({
   agentDir: string
   host: UiBridgeHost
 }) {
-  const toolPath = path.join(agentDir, 'extensions/ask-user-questions/tool.ts')
-  const module = (await import(pathToFileURL(toolPath).href)) as AskUserQuestionsModule
-  return [module.createAskUserQuestionsTool({ host }) as AgentTool]
+  const bridgeApi = await loadPiUiBridgeEmbeddedModule(agentDir)
+  return [bridgeApi.createAskUserQuestionsTool({ host }) as AgentTool]
 }
 
 async function createPiUiBridgeExtensionFactories({
@@ -264,10 +290,9 @@ async function createPiUiBridgeExtensionFactories({
   agentDir: string
   host: UiBridgeHost
 }) {
-  const forwarderPath = path.join(agentDir, 'ui-bridge/event-forwarder.ts')
-  const module = (await import(pathToFileURL(forwarderPath).href)) as UiBridgeEventForwarderModule
+  const bridgeApi = await loadPiUiBridgeEmbeddedModule(agentDir)
   return [
-    module.createUiBridgeEventForwardingExtension({
+    bridgeApi.createUiBridgeEventForwardingExtension({
       host,
       source: { extension: 'howcode' },
       onHostError: (error, _event, piEvent) => {
