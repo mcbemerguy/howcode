@@ -58,6 +58,10 @@ The near-term direction is:
 
 And additional views for just chatting, with some basic websearch etc., a claw-like sidekick for the app that can use it for/with you and co-work-style environment.
 
+## Local Pi bridge fork
+
+This checkout may carry local Pi UI bridge patches. See `docs/pi-bridge.md` before changing the bridge branch, custom Pi directory, workflow progress UI, or `ask_user_questions` behavior.
+
 ## For developers
 
 If you want to run from source:

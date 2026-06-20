@@ -9,6 +9,11 @@
 - Never weaken strict Biome or TypeScript rules just to silence warnings quickly. Fix the issue properly or add a narrow, justified override.
 - Prefer modular structure before piling more branches into an existing file. When a change adds a new concern, platform split, state machine, or UI surface, first consider a small folder/module boundary instead of growing a godfile/godfunction.
 
+## Pi bridge fork workflow
+- This checkout is the current primary desktop dogfood UI for Pi in `/home/marcosb/.pi`; keep it on `pi-ui-bridge-maintainable-phase1` or a successor rebuilt from `upstream/main`.
+- Do not reintroduce the old broad `origin/pi-ui-bridge` fork history. Bridge changes should remain rebuildable from upstream Howcode plus the Pi-owned patch assets in `/home/marcosb/.pi/integrations/howcode/`.
+- For local Pi behavior, set Howcode's Custom Pi directory or `PI_CODING_AGENT_DIR` to `/home/marcosb/.pi/agent`. Howcode still embeds its own `@earendil-works/pi-*` package versions, so validate bridge/API changes instead of assuming the local agent checkout and app package versions match.
+
 ## Project Workflow
 - In dev, assume the app dev server is already running; do not start it manually, and use Electron CDP at `127.0.0.1:39217`.
 - Prefer `src/electron/main/**`, `src/electron/preload/**`, and `shared/*` contracts over ad-hoc desktop IPC shims.
