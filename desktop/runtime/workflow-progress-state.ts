@@ -1,19 +1,10 @@
 // Pi UI bridge Howcode adapter. Managed by integrations/howcode/scripts/patch-howcode.mjs.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { PiWorkflowProgressRun } from '../../shared/desktop-contracts.ts'
 import type { PiRuntime } from './types.ts'
 
-const lineBreakPattern = /\r?\n/
 const workflowEventName = 'workflow:running-task'
-const terminalStatuses = new Set(['completed', 'failed', 'aborted'])
-const workflowProgressEventTypes = new Set([
-  'run_start',
-  'run_end',
-  'step_start',
-  'step_update',
-  'step_end',
-])
 const terminalRunRetentionMs = 10 * 60 * 1000
 const activeRunRecoveryMaxAgeMs = 5 * 60 * 1000
 const artifactRecoveryMaxAgeMs = 24 * 60 * 60 * 1000
@@ -23,37 +14,9 @@ const runJsonRecoveryMaxBytes = 1024 * 1024
 const childSessionIdPattern = /^[A-Za-z0-9_-]+$/
 const runsBySessionPath = new Map<string, Map<string, PiWorkflowProgressRun>>()
 
+export type RecoveredWorkflowProgress = { cwd: string | null; run: PiWorkflowProgressRun }
+
 type RuntimeSessionLike = { session: { sessionFile?: string | undefined } }
-
-type RawWorkflowEvent = {
-  type?: unknown
-  runId?: unknown
-  workflowId?: unknown
-  runDir?: unknown
-  auditPath?: unknown
-  stepId?: unknown
-  stepType?: unknown
-  status?: unknown
-  elapsedMs?: unknown
-  activity?: unknown
-  currentTool?: unknown
-  childSessionId?: unknown
-  childSessionPath?: unknown
-  detailPath?: unknown
-  detailKind?: unknown
-  error?: unknown
-  timestamp?: unknown
-}
-
-type UiBridgeEventRecord = Record<string, unknown> & {
-  type?: unknown
-  payload?: unknown
-  timestamp?: unknown
-}
-
-type TimestampRecord = Record<string, unknown> & { timestamp?: unknown }
-
-type RecoveredWorkflowProgress = { cwd: string | null; run: PiWorkflowProgressRun }
 
 type ArtifactStats = { mtimeMs: number; size: number }
 
@@ -66,160 +29,60 @@ type ArtifactCandidate = {
   mtimeMs: number
 }
 
-type RunJsonRecord = Record<string, unknown> & {
-  auditPath?: unknown
-  currentStepIndex?: unknown
-  cwd?: unknown
-  endedAt?: unknown
-  error?: unknown
-  id?: unknown
-  runDir?: unknown
-  runId?: unknown
-  startedAt?: unknown
-  status?: unknown
-  steps?: unknown
-  workflowId?: unknown
+type WorkflowChildSessionPathInput = {
+  runDir: string | null
+  childSessionId: string | null
+  childSessionPath: string | null
 }
 
-type RunJsonStepRecord = Record<string, unknown> & {
-  endedAt?: unknown
-  id?: unknown
-  index?: unknown
-  startedAt?: unknown
-  status?: unknown
-  type?: unknown
-  childSessionId?: unknown
-  childSessionPath?: unknown
+export type WorkflowProgressBridgeApi = {
+  normalizeWorkflowProgressEvent: (input: unknown) => { runId: string } | null
+  applyWorkflowProgressEvent: (
+    previous: PiWorkflowProgressRun | undefined,
+    input: unknown,
+  ) => PiWorkflowProgressRun | null
+  recoverWorkflowProgressFromEventsJsonlContent: (
+    content: string,
+    options?: {
+      eventsPath?: string | undefined
+      runDir?: string | undefined
+      resolveChildSessionPath?:
+        | ((input: WorkflowChildSessionPathInput) => string | null)
+        | undefined
+      onMalformedLine?: ((line: string) => void) | undefined
+    },
+  ) => RecoveredWorkflowProgress | null
+  recoverWorkflowProgressFromRunJsonArtifact: (
+    input: unknown,
+    options: {
+      runDir: string
+      runPath?: string | undefined
+      eventsPath?: string | undefined
+      nowMs?: number | undefined
+      mtimeMs?: number | undefined
+      resolveChildSessionPath?:
+        | ((input: WorkflowChildSessionPathInput) => string | null)
+        | undefined
+      onWarning?: ((message: string, artifactPath: string) => void) | undefined
+    },
+  ) => RecoveredWorkflowProgress | null
+  mergeRecoveredWorkflowProgressArtifacts: (
+    summary: RecoveredWorkflowProgress,
+    events: RecoveredWorkflowProgress,
+  ) => RecoveredWorkflowProgress
 }
 
-function asRecord(value: unknown) {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+let workflowProgressBridgeApi: WorkflowProgressBridgeApi | null = null
+
+export function setWorkflowProgressBridgeApi(api: WorkflowProgressBridgeApi) {
+  workflowProgressBridgeApi = api
 }
 
-function asString(value: unknown) {
-  return typeof value === 'string' && value.length > 0 ? value : null
-}
-
-function asNumber(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function asDetailKind(value: unknown) {
-  return value === 'workflow-jsonl' || value === 'text' ? value : null
-}
-
-function unwrapWorkflowEvent(input: unknown) {
-  const record = asRecord(input) as UiBridgeEventRecord | null
-  if (!record || record.type !== workflowEventName) return input
-  const payload = asRecord(record.payload) as TimestampRecord | null
-  if (!payload) return null
-  return {
-    ...payload,
-    timestamp: asString(payload.timestamp) ?? asString(record.timestamp) ?? undefined,
+function getWorkflowProgressBridgeApi() {
+  if (!workflowProgressBridgeApi) {
+    recoveryWarning('workflow progress bridge helpers are unavailable', workflowEventName)
   }
-}
-
-function normalizeEvent(input: unknown): RawWorkflowEvent | null {
-  const unwrapped = unwrapWorkflowEvent(input)
-  if (!unwrapped || typeof unwrapped !== 'object') return null
-  const event = unwrapped as RawWorkflowEvent
-  if (!(asString(event.runId) && asString(event.workflowId) && asString(event.type))) return null
-  return event
-}
-
-function isWorkflowProgressEvent(event: RawWorkflowEvent) {
-  const type = asString(event.type)
-  return type !== null && workflowProgressEventTypes.has(type)
-}
-
-function getRunIdentity(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
-  const runId = asString(event.runId) ?? previous?.runId ?? null
-  const workflowId = asString(event.workflowId) ?? previous?.workflowId ?? null
-  return runId && workflowId ? { runId, workflowId } : null
-}
-
-function getRunPaths(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
-  const detailPath = asString(event.detailPath) ?? previous?.detailPath ?? null
-  return {
-    auditPath: asString(event.auditPath) ?? previous?.auditPath ?? detailPath,
-    detailKind: asDetailKind(event.detailKind) ?? previous?.detailKind ?? null,
-    detailPath,
-    runDir: asString(event.runDir) ?? previous?.runDir ?? null,
-  }
-}
-
-function getRunStatus(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
-  const eventType = asString(event.type) ?? 'step_update'
-  const eventStatus = asString(event.status)
-  const runStatus = eventType === 'run_end' ? eventStatus : null
-  const status =
-    eventType === 'run_start' ? 'running' : (runStatus ?? previous?.status ?? 'running')
-  return {
-    eventType,
-    status,
-    stepStatus:
-      eventType === 'run_end' ? null : (eventStatus ?? previous?.currentStepStatus ?? null),
-    terminal: eventType === 'run_end' || terminalStatuses.has(status),
-  }
-}
-
-function shouldResetStepScopedFields(
-  previous: PiWorkflowProgressRun | undefined,
-  event: RawWorkflowEvent,
-) {
-  if (asString(event.type) === 'step_start') return true
-  const eventStepId = asString(event.stepId)
-  return Boolean(previous?.currentStepId && eventStepId && eventStepId !== previous.currentStepId)
-}
-
-function getRunActivity(previous: PiWorkflowProgressRun | undefined, event: RawWorkflowEvent) {
-  const resetStepScopedFields = shouldResetStepScopedFields(previous, event)
-  return {
-    activity:
-      asString(event.activity) ?? (resetStepScopedFields ? null : (previous?.activity ?? null)),
-    childSessionId:
-      asString(event.childSessionId) ??
-      (resetStepScopedFields ? null : (previous?.childSessionId ?? null)),
-    childSessionPath:
-      asString(event.childSessionPath) ??
-      (resetStepScopedFields ? null : (previous?.childSessionPath ?? null)),
-    currentTool:
-      asString(event.currentTool) ??
-      (resetStepScopedFields ? null : (previous?.currentTool ?? null)),
-    error: asString(event.error) ?? previous?.error ?? null,
-  }
-}
-
-export function applyWorkflowProgressEvent(
-  previous: PiWorkflowProgressRun | undefined,
-  input: unknown,
-): PiWorkflowProgressRun | null {
-  const event = normalizeEvent(input)
-  if (!event) return previous ?? null
-  const identity = getRunIdentity(previous, event)
-  if (!identity) return previous ?? null
-
-  const paths = getRunPaths(previous, event)
-  const status = getRunStatus(previous, event)
-  const activity = getRunActivity(previous, event)
-  const next: PiWorkflowProgressRun = {
-    ...identity,
-    ...paths,
-    currentStepId: asString(event.stepId) ?? previous?.currentStepId ?? null,
-    currentStepType: asString(event.stepType) ?? previous?.currentStepType ?? null,
-    currentStepStatus: status.stepStatus,
-    status: status.status,
-    ...activity,
-    elapsedMs: asNumber(event.elapsedMs) ?? previous?.elapsedMs ?? null,
-    updatedAt: asString(event.timestamp) ?? new Date().toISOString(),
-    terminal: status.terminal,
-  }
-
-  if (status.eventType === 'run_end') {
-    next.activity = next.error ? 'Workflow failed' : next.status
-  }
-
-  return next
+  return workflowProgressBridgeApi
 }
 
 function getSessionRuns(sessionPath: string) {
@@ -231,20 +94,29 @@ function getSessionRuns(sessionPath: string) {
   return runs
 }
 
+export function applyWorkflowProgressEvent(
+  previous: PiWorkflowProgressRun | undefined,
+  input: unknown,
+): PiWorkflowProgressRun | null {
+  return (
+    getWorkflowProgressBridgeApi()?.applyWorkflowProgressEvent(previous, input) ?? previous ?? null
+  )
+}
+
 export function recordRuntimeWorkflowProgressBridgeEvent(
   runtime: RuntimeSessionLike,
   input: unknown,
 ) {
   const sessionPath = runtime.session.sessionFile
   if (!sessionPath) return false
-  const event = normalizeEvent(input)
+  const api = getWorkflowProgressBridgeApi()
+  if (!api) return false
+  const event = api.normalizeWorkflowProgressEvent(input)
   if (!event) return false
-  const runId = asString(event.runId)
-  if (!runId) return false
   const runs = getSessionRuns(sessionPath)
-  const next = applyWorkflowProgressEvent(runs.get(runId), event)
+  const next = api.applyWorkflowProgressEvent(runs.get(event.runId), input)
   if (!next) return false
-  runs.set(runId, next)
+  runs.set(next.runId, next)
   return true
 }
 
@@ -269,25 +141,6 @@ export function getWorkflowProgressRuns(runtime: RuntimeSessionLike, nowMs = Dat
 function recoveryWarning(message: string, artifactPath: string, error?: unknown) {
   const suffix = error instanceof Error ? `: ${error.message}` : ''
   console.warn(`Pi workflow recovery: ${message} (${artifactPath})${suffix}`)
-}
-
-function parseEventLine(line: string) {
-  try {
-    return { parsed: JSON.parse(line) as unknown, ok: true }
-  } catch {
-    return { parsed: null, ok: false }
-  }
-}
-
-function parseTimestampMs(value: unknown) {
-  const text = asString(value)
-  if (!text) return null
-  const timestamp = Date.parse(text)
-  return Number.isFinite(timestamp) ? timestamp : null
-}
-
-function toIsoString(ms: number) {
-  return new Date(ms).toISOString()
 }
 
 function artifactStats(path: string) {
@@ -318,63 +171,17 @@ function readJsonArtifact(path: string, stats: ArtifactStats, maxBytes: number) 
   }
 }
 
-function selectRunJsonStep(run: RunJsonRecord) {
-  const steps = Array.isArray(run.steps)
-    ? run.steps.map(asRecord).filter((step): step is RunJsonStepRecord => Boolean(step))
-    : []
-  const running = steps.find((step) => asString(step.status) === 'running')
-  if (running) return running
-  const currentStepIndex = asNumber(run.currentStepIndex)
-  if (currentStepIndex !== null) {
-    const byArrayIndex = steps[currentStepIndex]
-    if (byArrayIndex) return byArrayIndex
-    const byStepIndex = steps.find((step) => asNumber(step.index) === currentStepIndex)
-    if (byStepIndex) return byStepIndex
+function readEventsJsonlContent(eventsPath: string, stats: ArtifactStats) {
+  if (stats.size > eventsJsonlRecoveryMaxBytes) {
+    recoveryWarning(`skipping events.jsonl above ${eventsJsonlRecoveryMaxBytes} bytes`, eventsPath)
+    return null
   }
-  return steps.length > 0 ? (steps[steps.length - 1] ?? null) : null
-}
-
-function stepActivity(step: RunJsonStepRecord | null, status: string, terminal: boolean) {
-  if (terminal) return status
-  const stepId = step ? asString(step.id) : null
-  const stepStatus = step ? asString(step.status) : null
-  if (stepId && stepStatus) return `${stepId}: ${stepStatus}`
-  if (stepId) return `Step ${stepId}`
-  return status
-}
-
-function getRunJsonIdentity(run: RunJsonRecord, path: string) {
-  const runId = asString(run.id) ?? asString(run.runId)
-  const workflowId = asString(run.workflowId)
-  if (runId && workflowId) return { runId, workflowId }
-  recoveryWarning('skipping run.json without run identity', path)
-  return null
-}
-
-function getRunJsonTiming(
-  run: RunJsonRecord,
-  step: RunJsonStepRecord | null,
-  candidate: ArtifactCandidate,
-  nowMs: number,
-) {
-  const startedAtMs = parseTimestampMs(run.startedAt)
-  const endedAtMs = parseTimestampMs(run.endedAt)
-  const stepEndedAtMs = step ? parseTimestampMs(step.endedAt) : null
-  const stepStartedAtMs = step ? parseTimestampMs(step.startedAt) : null
-  return {
-    elapsedMs: startedAtMs === null ? null : (endedAtMs ?? nowMs) - startedAtMs,
-    updatedAt: toIsoString(endedAtMs ?? stepEndedAtMs ?? stepStartedAtMs ?? candidate.mtimeMs),
+  try {
+    return readFileSync(eventsPath, 'utf8')
+  } catch (error) {
+    recoveryWarning('could not read events.jsonl', eventsPath, error)
+    return null
   }
-}
-
-function getRunJsonPaths(run: RunJsonRecord, candidate: ArtifactCandidate) {
-  const auditPath = asString(run.auditPath) ?? join(candidate.runDir, 'audit.md')
-  return {
-    auditPath,
-    detailKind: candidate.eventsStats ? 'workflow-jsonl' : 'text',
-    detailPath: candidate.eventsStats ? candidate.eventsPath : auditPath,
-    runDir: asString(run.runDir) ?? candidate.runDir,
-  } satisfies Pick<PiWorkflowProgressRun, 'auditPath' | 'detailKind' | 'detailPath' | 'runDir'>
 }
 
 function findSessionFileByChildId(
@@ -401,164 +208,54 @@ function findSessionFileByChildId(
   }
 }
 
-function resolveRecoveredChildSessionPath(input: {
-  runDir: string | null | undefined
-  childSessionId: string | null
-  childSessionPath: string | null
-}) {
+function resolveRecoveredChildSessionPath(input: WorkflowChildSessionPathInput) {
   return input.childSessionPath ?? findSessionFileByChildId(input.runDir, input.childSessionId)
 }
 
 function recoverRunJsonArtifact(
   candidate: ArtifactCandidate,
   nowMs: number,
+  api: WorkflowProgressBridgeApi,
 ): RecoveredWorkflowProgress | null {
   if (!candidate.runStats) return null
   const parsed = readJsonArtifact(candidate.runPath, candidate.runStats, runJsonRecoveryMaxBytes)
-  const run = asRecord(parsed) as RunJsonRecord | null
-  if (!run) return null
-  const identity = getRunJsonIdentity(run, candidate.runPath)
-  if (!identity) return null
-
-  const status = asString(run.status) ?? 'running'
-  const terminal = terminalStatuses.has(status)
-  const step = selectRunJsonStep(run)
-  const paths = getRunJsonPaths(run, candidate)
-  const childSessionId = step ? asString(step.childSessionId) : null
-  return {
-    cwd: asString(run.cwd),
-    run: {
-      ...identity,
-      ...paths,
-      currentStepId: step ? asString(step.id) : null,
-      currentStepType: step ? asString(step.type) : null,
-      currentStepStatus: terminal ? null : step ? asString(step.status) : null,
-      status,
-      activity: stepActivity(step, status, terminal),
-      currentTool: null,
-      childSessionId,
-      childSessionPath: resolveRecoveredChildSessionPath({
-        runDir: paths.runDir,
-        childSessionId,
-        childSessionPath: step ? asString(step.childSessionPath) : null,
-      }),
-      ...getRunJsonTiming(run, step, candidate, nowMs),
-      error: asString(run.error),
-      terminal,
-    } satisfies PiWorkflowProgressRun,
-  }
-}
-
-function readEventsJsonlContent(eventsPath: string) {
-  try {
-    return readFileSync(eventsPath, 'utf8')
-  } catch (error) {
-    recoveryWarning('could not read events.jsonl', eventsPath, error)
-    return null
-  }
-}
-
-function updateMalformedLineWarning(ok: boolean, warned: boolean, eventsPath: string) {
-  if (ok || warned) return warned
-  recoveryWarning('ignored malformed events.jsonl line', eventsPath)
-  return true
-}
-
-type SmallEventsRecoveryState = {
-  current: PiWorkflowProgressRun | null
-  cwd: string | null
-}
-
-function updateSmallEventsRecoveryState(state: SmallEventsRecoveryState, parsed: unknown) {
-  if (parsed && typeof parsed === 'object') {
-    state.cwd = asString((parsed as { cwd?: unknown }).cwd) ?? state.cwd
-  }
-  const event = normalizeEvent(parsed)
-  if (!(event && isWorkflowProgressEvent(event))) return
-  state.current = applyWorkflowProgressEvent(state.current ?? undefined, event)
-}
-
-function recoverSmallEventsJsonlArtifact(eventsPath: string): RecoveredWorkflowProgress | null {
-  const state: SmallEventsRecoveryState = { current: null, cwd: null }
-  let warnedMalformedLine = false
-  const content = readEventsJsonlContent(eventsPath)
-  if (content === null) return null
-  for (const line of content.split(lineBreakPattern)) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const { parsed, ok } = parseEventLine(trimmed)
-    warnedMalformedLine = updateMalformedLineWarning(ok, warnedMalformedLine, eventsPath)
-    updateSmallEventsRecoveryState(state, parsed)
-  }
-  if (!state.current) return null
-  const runDir = state.current.runDir ?? dirname(eventsPath)
-  return {
-    cwd: state.cwd,
-    run: {
-      ...state.current,
-      auditPath: state.current.auditPath ?? join(runDir, 'audit.md'),
-      detailKind: state.current.detailKind ?? 'workflow-jsonl',
-      detailPath: state.current.detailPath ?? eventsPath,
-      runDir,
-      childSessionPath: resolveRecoveredChildSessionPath({
-        runDir,
-        childSessionId: state.current.childSessionId,
-        childSessionPath: state.current.childSessionPath,
-      }),
-    } satisfies PiWorkflowProgressRun,
-  }
+  return api.recoverWorkflowProgressFromRunJsonArtifact(parsed, {
+    runDir: candidate.runDir,
+    runPath: candidate.runPath,
+    ...(candidate.eventsStats ? { eventsPath: candidate.eventsPath } : {}),
+    nowMs,
+    mtimeMs: candidate.mtimeMs,
+    resolveChildSessionPath: resolveRecoveredChildSessionPath,
+    onWarning: recoveryWarning,
+  })
 }
 
 function recoverEventsJsonlArtifact(
   eventsPath: string,
   stats: ArtifactStats,
+  api: WorkflowProgressBridgeApi,
 ): RecoveredWorkflowProgress | null {
-  if (stats.size > eventsJsonlRecoveryMaxBytes) {
-    recoveryWarning(`skipping events.jsonl above ${eventsJsonlRecoveryMaxBytes} bytes`, eventsPath)
-    return null
-  }
-  return recoverSmallEventsJsonlArtifact(eventsPath)
-}
-
-function mergeRecoveredRunJsonAndEvents(
-  summary: RecoveredWorkflowProgress,
-  events: RecoveredWorkflowProgress,
-): RecoveredWorkflowProgress {
-  const runJsonIsTerminal = summary.run.terminal || terminalStatuses.has(summary.run.status)
-  const merged = {
-    ...summary.run,
-    ...events.run,
-    auditPath: events.run.auditPath ?? summary.run.auditPath,
-    detailKind: summary.run.detailKind ?? events.run.detailKind,
-    detailPath: summary.run.detailPath ?? events.run.detailPath,
-    runDir: events.run.runDir ?? summary.run.runDir,
-  }
-  if (runJsonIsTerminal) {
-    merged.status = summary.run.status
-    merged.currentStepId = summary.run.currentStepId
-    merged.currentStepType = summary.run.currentStepType
-    merged.currentStepStatus = summary.run.currentStepStatus
-    merged.activity = summary.run.activity
-    merged.currentTool = summary.run.currentTool
-    merged.childSessionId = summary.run.childSessionId
-    merged.childSessionPath = summary.run.childSessionPath
-    merged.elapsedMs = summary.run.elapsedMs
-    merged.error = summary.run.error
-    merged.updatedAt = summary.run.updatedAt
-    merged.terminal = true
-  }
-  return {
-    cwd: summary.cwd ?? events.cwd,
-    run: merged,
-  }
+  const content = readEventsJsonlContent(eventsPath, stats)
+  if (content === null) return null
+  let warnedMalformedLine = false
+  return api.recoverWorkflowProgressFromEventsJsonlContent(content, {
+    eventsPath,
+    resolveChildSessionPath: resolveRecoveredChildSessionPath,
+    onMalformedLine: () => {
+      if (warnedMalformedLine) return
+      warnedMalformedLine = true
+      recoveryWarning('ignored malformed events.jsonl line', eventsPath)
+    },
+  })
 }
 
 function recoverWorkflowProgressArtifact(
   eventsPath: string,
 ): { cwd: string | null; run: PiWorkflowProgressRun } | null {
+  const api = getWorkflowProgressBridgeApi()
   const stats = artifactStats(eventsPath)
-  if (!stats) return null
-  return recoverEventsJsonlArtifact(eventsPath, stats)
+  if (!(api && stats)) return null
+  return recoverEventsJsonlArtifact(eventsPath, stats, api)
 }
 
 export function recoverWorkflowProgressFromEventsFile(eventsPath: string) {
@@ -603,16 +300,21 @@ function recoverArtifactCandidate(
   candidate: ArtifactCandidate,
   cwd: string,
   nowMs: number,
+  api: WorkflowProgressBridgeApi,
 ): RecoveredWorkflowProgress | null {
-  const runJsonRecovered = recoverRunJsonArtifact(candidate, nowMs)
+  const runJsonRecovered = recoverRunJsonArtifact(candidate, nowMs, api)
   if (runJsonRecovered?.cwd && !samePath(runJsonRecovered.cwd, cwd)) return null
 
   let recovered = runJsonRecovered
   if (candidate.eventsStats) {
-    const eventsRecovered = recoverEventsJsonlArtifact(candidate.eventsPath, candidate.eventsStats)
+    const eventsRecovered = recoverEventsJsonlArtifact(
+      candidate.eventsPath,
+      candidate.eventsStats,
+      api,
+    )
     if (eventsRecovered) {
       recovered = recovered
-        ? mergeRecoveredRunJsonAndEvents(recovered, eventsRecovered)
+        ? api.mergeRecoveredWorkflowProgressArtifacts(recovered, eventsRecovered)
         : eventsRecovered
     }
   }
@@ -626,6 +328,8 @@ export function recoverWorkflowProgressFromArtifacts(options: {
   cwd: string
   nowMs?: number
 }) {
+  const api = getWorkflowProgressBridgeApi()
+  if (!api) return []
   const runsDir = join(options.agentDir, 'workflow-runs')
   if (!existsSync(runsDir)) return []
   const nowMs = options.nowMs ?? Date.now()
@@ -634,7 +338,7 @@ export function recoverWorkflowProgressFromArtifacts(options: {
     .sort((left, right) => right.mtimeMs - left.mtimeMs)
     .slice(0, artifactRecoveryLimit)
     .flatMap((entry) => {
-      const recovered = recoverArtifactCandidate(entry, options.cwd, nowMs)
+      const recovered = recoverArtifactCandidate(entry, options.cwd, nowMs, api)
       if (!recovered) return []
       const run = { ...recovered.run, updatedAt: new Date(entry.mtimeMs).toISOString() }
       if (!run.terminal && nowMs - entry.mtimeMs > activeRunRecoveryMaxAgeMs) return []

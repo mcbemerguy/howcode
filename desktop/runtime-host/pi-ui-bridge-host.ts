@@ -17,7 +17,9 @@ import { recordPiNotificationEvent } from '../runtime/pi-notification-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
 import {
   recordRuntimeWorkflowProgressBridgeEvent,
+  setWorkflowProgressBridgeApi,
   subscribeRuntimeWorkflowProgress,
+  type WorkflowProgressBridgeApi,
 } from '../runtime/workflow-progress-state.ts'
 import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
@@ -61,7 +63,7 @@ type UiBridgeHost = {
   emitEvent?: (event: UiBridgeEvent) => void | Promise<void>
 }
 
-type PiUiBridgeEmbeddedModule = {
+type PiUiBridgeEmbeddedModule = WorkflowProgressBridgeApi & {
   createAskUserQuestionsTool: (options: { host?: UiBridgeHost }) => unknown
   createUiBridgeEventForwardingExtension: (options: {
     host?: UiBridgeHost
@@ -79,7 +81,12 @@ function isPiUiBridgeEmbeddedModule(value: unknown): value is PiUiBridgeEmbedded
   const candidate = value as Partial<PiUiBridgeEmbeddedModule>
   return (
     typeof candidate.createAskUserQuestionsTool === 'function' &&
-    typeof candidate.createUiBridgeEventForwardingExtension === 'function'
+    typeof candidate.createUiBridgeEventForwardingExtension === 'function' &&
+    typeof candidate.normalizeWorkflowProgressEvent === 'function' &&
+    typeof candidate.applyWorkflowProgressEvent === 'function' &&
+    typeof candidate.recoverWorkflowProgressFromEventsJsonlContent === 'function' &&
+    typeof candidate.recoverWorkflowProgressFromRunJsonArtifact === 'function' &&
+    typeof candidate.mergeRecoveredWorkflowProgressArtifacts === 'function'
   )
 }
 
@@ -91,16 +98,17 @@ async function loadPiUiBridgeEmbeddedModule(agentDir: string) {
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(
-      `Configured Pi agent directory does not provide the embedded UI bridge API at ui-bridge/embedded.ts. Upgrade Pi or choose an agent directory with Phase 5 bridge support. Import failed: ${reason}`,
+      `Configured Pi agent directory does not provide the embedded UI bridge API at ui-bridge/embedded.ts. Upgrade Pi or choose an agent directory with Phase 6 bridge support. Import failed: ${reason}`,
     )
   }
 
   if (!isPiUiBridgeEmbeddedModule(module)) {
     throw new Error(
-      'Configured Pi agent directory has ui-bridge/embedded.ts but it does not export createAskUserQuestionsTool and createUiBridgeEventForwardingExtension. Upgrade Pi or choose a compatible agent directory.',
+      'Configured Pi agent directory has ui-bridge/embedded.ts but it does not export the Phase 6 UI bridge APIs. Upgrade Pi or choose a compatible agent directory.',
     )
   }
 
+  setWorkflowProgressBridgeApi(module)
   return module
 }
 
