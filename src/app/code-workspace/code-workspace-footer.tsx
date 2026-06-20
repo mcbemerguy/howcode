@@ -181,7 +181,10 @@ function CodeThreadComposer(props: CodeWorkspaceContentProps) {
       replyActivityKey={getReplyActivityKey(activeThreadData?.messages ?? [])}
       isCompacting={activeComposerState?.isCompacting ?? false}
       isExtensionCommandRunning={activeComposerState?.isExtensionCommandRunning ?? false}
+      nativeInteractionRequests={activeComposerState?.nativeInteractionRequests ?? []}
       nativeAskQuestionsRequest={activeComposerState?.nativeAskQuestionsRequest ?? null}
+      workflowProgressRuns={activeComposerState?.workflowProgressRuns ?? []}
+      piNotifications={activeComposerState?.piNotifications ?? []}
       thinkingLevel={activeComposerState?.currentThinkingLevel ?? 'off'}
       restoredQueuedPrompt={scopedRestoredQueuedPrompt}
       streamingBehaviorPreference={appSettings.composerStreamingBehavior}

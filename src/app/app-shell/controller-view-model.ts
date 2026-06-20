@@ -11,6 +11,7 @@ type DeriveControllerViewModelInput = {
   threadData: ThreadData | null
   shellCwd: string | null | undefined
   composerState: import('../desktop/types').ComposerState | null
+  displaySessionPath?: string | null | undefined
   shellComposerState: import('../desktop/types').ComposerState | null | undefined
 }
 
@@ -62,6 +63,7 @@ export function deriveControllerViewModel({
   threadData,
   shellCwd,
   composerState,
+  displaySessionPath,
   shellComposerState,
 }: DeriveControllerViewModelInput): ControllerViewModel {
   const collapsedProjectIds = Object.fromEntries(
@@ -72,8 +74,8 @@ export function deriveControllerViewModel({
   )
   const selectedProject = selectProject(projects, workspaceState.selectedProjectId)
   const selectedThread = selectThread(selectedProject, workspaceState.selectedThreadId)
-  const activeThreadData = workspaceState.selectedSessionPath
-    ? (threadData ?? buildFallbackThreadData(workspaceState.selectedSessionPath, selectedThread))
+  const activeThreadData = displaySessionPath
+    ? (threadData ?? buildFallbackThreadData(displaySessionPath, selectedThread))
     : null
 
   return {

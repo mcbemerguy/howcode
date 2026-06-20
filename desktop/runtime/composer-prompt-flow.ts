@@ -25,6 +25,7 @@ export type ComposerSendOutcome = {
 export type ComposerPromptFlowAdapters = {
   emitComposerUpdate: (request?: ComposerStateRequest) => Promise<unknown>
   isRuntimeExtensionCommandRunning: (runtime: PiRuntime) => boolean
+  prepareRuntimeSessionForPublish?: (runtime: PiRuntime) => void
   publishThreadUpdate: (
     runtime: PiRuntime,
     reason: Extract<RuntimeThreadReason, 'update' | 'compaction'>,
@@ -109,9 +110,11 @@ async function publishCompactionSettledState(input: {
   request: ComposerStateRequest
   runtime: PiRuntime
 }) {
+  input.adapters.prepareRuntimeSessionForPublish?.(input.runtime)
   await input.adapters.publishThreadUpdate(input.runtime, 'compaction').catch((error) => {
     console.error('Composer compaction settled but thread update publish failed', error)
   })
+  input.adapters.prepareRuntimeSessionForPublish?.(input.runtime)
   await input.adapters.emitComposerUpdate({
     ...input.request,
     sessionPath: input.persistedSessionPath,
@@ -145,6 +148,7 @@ export async function promptComposerRuntime(input: {
       ? { acceptWhen: () => adapters.isRuntimeExtensionCommandRunning(runtime) }
       : {}),
     emitComposerUpdate: adapters.emitComposerUpdate,
+    onPromptAccepted: () => adapters.prepareRuntimeSessionForPublish?.(runtime),
     runtime,
     message,
     ...(runtime.session.isStreaming
@@ -157,6 +161,7 @@ export async function promptComposerRuntime(input: {
     request: { ...request, sessionPath: persistedSessionPath },
     scheduleRuntimeDisposal: () => adapters.scheduleRuntimeDisposal(runtime),
   })
+  adapters.prepareRuntimeSessionForPublish?.(runtime)
   await adapters.publishThreadUpdate(runtime, 'update').catch((error) => {
     console.error('Composer prompt accepted but thread update publish failed', error)
   })

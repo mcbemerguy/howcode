@@ -27,6 +27,89 @@ export type NativeAskQuestionsRequest = {
   questions: NativeAskQuestion[]
 }
 
+export type NativeInteractionRequest = {
+  id: string
+  kind: string
+  title?: string | undefined
+  payload: unknown
+  source?:
+    | {
+        extension?: string | undefined
+        toolCallId?: string | undefined
+        sessionId?: string | undefined
+      }
+    | undefined
+}
+
+export type PiAskUserQuestionsAlternative = {
+  text: string
+  recommended: boolean
+  isOther: boolean
+  originalIndex: number | null
+}
+
+export type PiAskUserQuestionsQuestion = {
+  id: string
+  question: string
+  alternatives: PiAskUserQuestionsAlternative[]
+}
+
+export type PiAskUserQuestionsPayload = {
+  questions: PiAskUserQuestionsQuestion[]
+}
+
+export type PiAskUserQuestionsAnswer = {
+  questionId: string
+  question: string
+  selectedIndex: number
+  selectedOriginalIndex: number | null
+  answer: string
+  fromOther: boolean
+  edited: boolean
+}
+
+export type PiAskUserQuestionsResponse =
+  | { status: 'denied' }
+  | { status: 'confirmed'; answers: PiAskUserQuestionsAnswer[] }
+
+export type PiNotification = {
+  id: string
+  title: string
+  message: string
+  level: 'info' | 'warning' | 'error'
+  event: string | null
+  auditPath: string | null
+  detailPath: string | null
+  detailKind: 'text' | 'workflow-jsonl' | null
+  createdAt: string
+  source: {
+    extension: string | null
+    toolCallId: string | null
+    sessionId: string | null
+  }
+}
+
+export type PiWorkflowProgressRun = {
+  runId: string
+  workflowId: string
+  runDir: string | null
+  auditPath: string | null
+  detailPath: string | null
+  detailKind: 'text' | 'workflow-jsonl' | null
+  currentStepId: string | null
+  currentStepType: string | null
+  currentStepStatus: string | null
+  status: string
+  activity: string | null
+  currentTool: string | null
+  childSessionId: string | null
+  childSessionPath: string | null
+  elapsedMs: number | null
+  error: string | null
+  updatedAt: string
+  terminal: boolean
+}
+
 export type ComposerModel = {
   provider: string
   id: string
@@ -47,7 +130,10 @@ export type ComposerState = {
   currentThinkingLevel: ComposerThinkingLevel
   availableThinkingLevels: ComposerThinkingLevel[]
   queuedPrompts: ComposerQueuedPrompt[]
+  nativeInteractionRequests: NativeInteractionRequest[]
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
+  workflowProgressRuns: PiWorkflowProgressRun[]
+  piNotifications: PiNotification[]
   contextUsage: ComposerContextUsage | null
   isCompacting: boolean
   isExtensionCommandRunning: boolean

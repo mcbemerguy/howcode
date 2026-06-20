@@ -273,7 +273,13 @@ const handlers: DesktopRequestHandlerMap = {
     piThreads.loadThread(sessionPath, { historyCompactions }),
   searchThread: ({ sessionPath, query }) => piThreads.searchThread(sessionPath, query),
   watchSession: async ({ sessionPath }) => {
-    await piThreads.setWatchedSessionPath(sessionPath)
+    await piThreads.setWatchedSessionPath(sessionPath ? path.resolve(sessionPath) : null)
+    return { ok: true }
+  },
+  watchWorkflowStepSession: async ({ sessionPath }) => {
+    await piThreads.setWatchedWorkflowStepSessionPath(
+      sessionPath ? path.resolve(sessionPath) : null,
+    )
     return { ok: true }
   },
   invokeAction: async ({ action, payload = {} }) => {

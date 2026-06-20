@@ -151,6 +151,7 @@ export type PiThreadsService = {
   ) => Promise<ThreadData | null>
   searchThread: (sessionPath: string, query: string) => Promise<ThreadSearchResult>
   setWatchedSessionPath: (sessionPath: string | null) => Promise<void>
+  setWatchedWorkflowStepSessionPath: (sessionPath: string | null) => Promise<void>
   subscribeDesktopEvents: (listener: (event: DesktopEvent) => void) => () => void
 }
 

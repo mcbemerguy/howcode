@@ -16,6 +16,7 @@ import {
 } from './composer-prompt-surface-helpers'
 import { ComposerAttachmentRail, ComposerStopRail } from './composer-side-controls'
 import { useComposerController } from './controller/useComposerController'
+import { PiNotificationCard } from './pi-notification-card'
 import { useAskQuestionsOverlayHeight } from './useAskQuestionsOverlayHeight'
 import { useComposerFileMentions } from './useComposerFileMentions'
 import {
@@ -25,6 +26,7 @@ import {
 import { useComposerSkillMentions } from './useComposerSkillMentions'
 import { useComposerSlashCommands } from './useComposerSlashCommands'
 import { useGlobalComposerFileDrop } from './useGlobalComposerFileDrop'
+import { WorkflowProgressCard } from './workflow-progress-card'
 
 type ComposerPromptSurfaceProps = ComposerProps & {
   composerPanelRef: RefObject<HTMLDivElement | null>
@@ -47,6 +49,8 @@ export function ComposerPromptSurface({
   isCompacting,
   isExtensionCommandRunning,
   nativeAskQuestionsRequest,
+  workflowProgressRuns,
+  piNotifications,
   thinkingLevel,
   restoredQueuedPrompt,
   streamingBehaviorPreference,
@@ -292,6 +296,14 @@ export function ComposerPromptSurface({
       />
 
       <div className="relative grid gap-0 overflow-visible">
+        <PiNotificationCard notifications={piNotifications} />
+        <WorkflowProgressCard
+          runs={workflowProgressRuns}
+          stopping={isSending}
+          onStop={() => {
+            void stop()
+          }}
+        />
         {showAskQuestions ? (
           <div
             ref={askQuestionsOverlayRef}

@@ -40,6 +40,14 @@ export type {
   NativeAskQuestion,
   NativeAskQuestionOption,
   NativeAskQuestionsRequest,
+  NativeInteractionRequest,
+  PiAskUserQuestionsAlternative,
+  PiAskUserQuestionsAnswer,
+  PiAskUserQuestionsPayload,
+  PiAskUserQuestionsQuestion,
+  PiAskUserQuestionsResponse,
+  PiNotification,
+  PiWorkflowProgressRun,
 } from './desktop-composer-contracts'
 export type {
   DictationModelId,

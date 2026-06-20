@@ -6,7 +6,11 @@ import type {
   ComposerThinkingLevel,
 } from '../../shared/desktop-contracts.ts'
 import { getDesktopWorkingDirectory } from '../../shared/desktop-working-directory.ts'
-import { createLocalThreadDraft, getPersistedSessionPath } from '../../shared/session-paths.ts'
+import {
+  createLocalThreadDraft,
+  getPersistedSessionPath,
+  isLocalSessionPath,
+} from '../../shared/session-paths.ts'
 import { loadAppSettings } from '../app-settings/readers.ts'
 import { dequeueComposerPromptFromRuntime } from '../runtime/composer-dequeue.ts'
 import {
@@ -19,6 +23,7 @@ import {
   compactComposerRuntime,
   promptComposerRuntime,
 } from '../runtime/composer-prompt-flow.ts'
+import { rememberRuntimeLocalDraftSessionAlias } from '../runtime/composer-session-aliases.ts'
 import {
   expandRuntimeDollarSkillReferences,
   mapSessionSkills,
@@ -164,12 +169,35 @@ export async function sendComposerPrompt(
   },
 ): Promise<{ outcome: 'sent' | 'stopped'; sessionPath: string | null; threadId: string | null }> {
   const persistedSessionPath = getPersistedSessionPath(request.sessionPath)
+  const localDraftSessionPath = isLocalSessionPath(request.sessionPath) ? request.sessionPath : null
   const compactInstructions = parseCompactSlashCommand(request.text)
   const runSend = async (runtime: PiRuntime) => {
+    const rememberRuntimeLocalDraftAlias = () => {
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
+        persistedSessionPath: runtime.session.sessionFile,
+        localDraftSessionPath,
+      })
+    }
+    const promptAdapters = {
+      ...composerPromptAdapters,
+      emitComposerUpdate: async (composerRequest?: ComposerStateRequest) => {
+        rememberRuntimeLocalDraftAlias()
+        return await composerPromptAdapters.emitComposerUpdate(composerRequest)
+      },
+      prepareRuntimeSessionForPublish: rememberRuntimeLocalDraftAlias,
+      publishThreadUpdate: async (
+        activeRuntime: PiRuntime,
+        reason: Parameters<typeof composerPromptAdapters.publishThreadUpdate>[1],
+      ) => {
+        rememberRuntimeLocalDraftAlias()
+        return await composerPromptAdapters.publishThreadUpdate(activeRuntime, reason)
+      },
+    }
     try {
       if (compactInstructions !== null) {
         return await compactComposerRuntime({
-          adapters: composerPromptAdapters,
+          adapters: promptAdapters,
           compactInstructions,
           persistedSessionPath,
           request,
@@ -186,7 +214,7 @@ export async function sendComposerPrompt(
         request.composerStreamingBehavior ??
         loadAppSettings().composerStreamingBehavior
       return await promptComposerRuntime({
-        adapters: composerPromptAdapters,
+        adapters: promptAdapters,
         message,
         persistedSessionPath,
         request,
@@ -194,6 +222,7 @@ export async function sendComposerPrompt(
         streamingBehavior,
       })
     } finally {
+      rememberRuntimeLocalDraftAlias()
       const runtimeKey = getPersistedSessionPath(runtime.session.sessionFile)
       if (runtimeKey) scheduleRuntimeDisposal(runtimeKey)
     }
@@ -205,6 +234,13 @@ export async function sendComposerPrompt(
       request.composerSessionDir,
       { branchName: request.branchName ?? null, chatGroupId: request.chatGroupId ?? null },
     )
+    if (localDraftSessionPath) {
+      rememberRuntimeLocalDraftSessionAlias({
+        runtime,
+        persistedSessionPath: runtime.session.sessionFile,
+        localDraftSessionPath,
+      })
+    }
     await applyComposerModeSettings(runtime, request)
     return await runSend(runtime)
   }

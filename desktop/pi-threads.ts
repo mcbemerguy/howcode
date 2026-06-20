@@ -36,6 +36,7 @@ export {
   loadShellState,
   removeDictationModel,
   setWatchedSessionPath,
+  setWatchedWorkflowStepSessionPath,
   startProjectDiffStream,
   subscribeDesktopEvents,
   transcribeDictation,

@@ -4,6 +4,7 @@ import { LandingView, ProjectOverviewView } from '@howcode/projects'
 import { SessionsView } from '@howcode/sessions'
 import type { SettingsOpenTarget } from '@howcode/settings/settingsTypes'
 import { lazy, Suspense } from 'react'
+import type { ActiveWorkflowStepSession } from '../app-shell/workflow-step-session'
 import type {
   AppSettings,
   ArchivedThread,
@@ -54,6 +55,7 @@ type CodeWorkspaceMainViewProps = {
   selectedProjectId: string
   workspaceContentClass: string
   threadData: ThreadData | null
+  activeWorkflowStepSession?: ActiveWorkflowStepSession | null | undefined
   threadLoading?: boolean
   composerLayoutVersion: number
   composerOverlayHeight: number
@@ -81,6 +83,7 @@ function CodeThreadMainView({
   composerOverlayHeight,
   onLoadEarlierMessages,
   threadData,
+  activeWorkflowStepSession,
   threadLoading,
 }: Pick<
   CodeWorkspaceMainViewProps,
@@ -88,22 +91,31 @@ function CodeThreadMainView({
   | 'composerOverlayHeight'
   | 'onLoadEarlierMessages'
   | 'threadData'
+  | 'activeWorkflowStepSession'
   | 'threadLoading'
 >) {
   return (
-    <ThreadView
-      key={threadData?.sessionPath ?? 'new-thread'}
-      messages={threadData?.messages ?? []}
-      previousMessageCount={threadData?.previousMessageCount ?? 0}
-      isStreaming={threadData?.isStreaming ?? false}
-      isCompacting={threadData?.isCompacting ?? false}
-      composerLayoutVersion={composerLayoutVersion}
-      composerOverlayHeight={composerOverlayHeight}
-      sessionPath={threadData?.sessionPath ?? null}
-      loading={threadLoading ?? false}
-      onLoadEarlierMessages={onLoadEarlierMessages}
-      onLoadAroundMessage={onLoadEarlierMessages}
-    />
+    <div className="relative h-full min-h-0">
+      {activeWorkflowStepSession ? (
+        <div className="pointer-events-none absolute top-3 left-1/2 z-10 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-full border border-[color:var(--accent-border)] bg-[color:var(--panel)]/95 px-3 py-1 text-center text-xs text-[color:var(--text-muted)] shadow-sm backdrop-blur">
+          Viewing workflow step {activeWorkflowStepSession.stepId ?? 'session'} transcript. The
+          composer still controls the parent workflow.
+        </div>
+      ) : null}
+      <ThreadView
+        key={threadData?.sessionPath ?? 'new-thread'}
+        messages={threadData?.messages ?? []}
+        previousMessageCount={threadData?.previousMessageCount ?? 0}
+        isStreaming={threadData?.isStreaming ?? false}
+        isCompacting={threadData?.isCompacting ?? false}
+        composerLayoutVersion={composerLayoutVersion}
+        composerOverlayHeight={composerOverlayHeight}
+        sessionPath={threadData?.sessionPath ?? null}
+        loading={threadLoading ?? false}
+        onLoadEarlierMessages={onLoadEarlierMessages}
+        onLoadAroundMessage={onLoadEarlierMessages}
+      />
+    </div>
   )
 }
 
@@ -182,6 +194,7 @@ export function CodeWorkspaceMainView({
   selectedProjectId,
   workspaceContentClass,
   threadData,
+  activeWorkflowStepSession = null,
   threadLoading = false,
   composerLayoutVersion,
   composerOverlayHeight,
@@ -205,6 +218,7 @@ export function CodeWorkspaceMainView({
         composerLayoutVersion={composerLayoutVersion}
         composerOverlayHeight={composerOverlayHeight}
         threadData={threadData}
+        activeWorkflowStepSession={activeWorkflowStepSession}
         threadLoading={threadLoading}
         onLoadEarlierMessages={onLoadEarlierMessages}
       />

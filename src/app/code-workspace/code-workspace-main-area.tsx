@@ -69,6 +69,7 @@ function CodeWorkspaceDefaultMain(props: CodeWorkspaceContentProps) {
       selectedProjectId={selectedProjectId}
       workspaceContentClass={props.workspaceContentClass}
       threadData={props.activeThreadData}
+      activeWorkflowStepSession={props.controller.activeWorkflowStepSession}
       threadLoading={props.threadTimelineLoading}
       composerLayoutVersion={props.composerLayoutVersion}
       composerOverlayHeight={props.composerOverlayHeight}

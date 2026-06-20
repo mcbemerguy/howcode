@@ -10,6 +10,9 @@ import type {
   ComposerThinkingLevel,
   DesktopActionInvoker,
   NativeAskQuestionsRequest,
+  NativeInteractionRequest,
+  PiNotification,
+  PiWorkflowProgressRun,
   ProjectDiffBaseline,
   ProjectDiffRenderMode,
   ProjectGitState,
@@ -27,7 +30,10 @@ export type ComposerProps = {
   replyActivityKey: string
   isCompacting: boolean
   isExtensionCommandRunning: boolean
+  nativeInteractionRequests: NativeInteractionRequest[]
   nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
+  workflowProgressRuns: PiWorkflowProgressRun[]
+  piNotifications: PiNotification[]
   thinkingLevel: ComposerThinkingLevel
   restoredQueuedPrompt: string | null
   streamingBehaviorPreference: ComposerStreamingBehavior

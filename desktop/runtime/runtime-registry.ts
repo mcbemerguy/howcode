@@ -56,6 +56,7 @@ function publishRuntimeComposerState(runtime: PiRuntime) {
       publishComposerUpdate(composer, {
         projectId: runtime.cwd,
         sessionPath: runtime.session.sessionFile,
+        runtime,
       })
     })
     .catch(() => {

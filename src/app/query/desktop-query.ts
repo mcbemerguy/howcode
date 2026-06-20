@@ -340,3 +340,7 @@ export function subscribeDesktopEvents(
 export async function watchSessionQuery(sessionPath: string | null): Promise<void> {
   await window.piDesktop?.watchSession?.(sessionPath)
 }
+
+export async function watchWorkflowStepSessionQuery(sessionPath: string | null): Promise<void> {
+  await window.piDesktop?.watchWorkflowStepSession?.(sessionPath)
+}

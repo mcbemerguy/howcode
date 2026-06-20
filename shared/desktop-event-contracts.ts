@@ -49,7 +49,14 @@ export type DesktopEvent =
     }
   | {
       type: 'thread-update'
-      reason: 'start' | 'update' | 'end' | 'external' | 'compaction-start' | 'compaction'
+      reason:
+        | 'start'
+        | 'update'
+        | 'end'
+        | 'external'
+        | 'workflow-step'
+        | 'compaction-start'
+        | 'compaction'
       projectId: string
       threadId: string
       sessionPath: string
@@ -64,5 +71,6 @@ export type DesktopEvent =
       type: 'composer-update'
       projectId: string | null
       sessionPath: string | null
+      localDraftSessionPath?: string | null | undefined
       composer: ComposerState
     }

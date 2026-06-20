@@ -216,6 +216,7 @@ declare global {
       getThread?: (sessionPath: string, historyCompactions?: number) => Promise<ThreadData | null>
       searchThread?: (sessionPath: string, query: string) => Promise<ThreadSearchResult>
       watchSession?: (sessionPath: string | null) => Promise<void>
+      watchWorkflowStepSession?: (sessionPath: string | null) => Promise<void>
       listTerminals?: () => Promise<TerminalSessionSnapshot[]>
       openTerminal?: (request: TerminalOpenRequest) => Promise<TerminalSessionSnapshot>
       writeTerminal?: (sessionId: string, data: string) => Promise<void>

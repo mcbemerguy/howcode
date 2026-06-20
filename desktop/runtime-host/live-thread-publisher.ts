@@ -1,4 +1,5 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
+import { getPersistedSessionPath } from '../../shared/session-paths.ts'
 import {
   buildThreadData,
   setThreadCompactingState,
@@ -6,6 +7,10 @@ import {
 } from '../../shared/thread-data.ts'
 import { buildThreadHistorySlice, type SessionPathEntry } from '../../shared/thread-history.ts'
 import { isChatSessionPath } from '../chat-state-db.ts'
+import {
+  getLocalDraftSessionAlias,
+  getRuntimeLocalDraftSessionAlias,
+} from '../runtime/composer-session-aliases.ts'
 import { buildComposerState } from '../runtime/composer-state.ts'
 import type { PiRuntime, RuntimeThreadReason } from '../runtime/types.ts'
 import { emitDesktopEvent } from './host-events.ts'
@@ -70,13 +75,20 @@ export function publishComposerUpdate(
   context: {
     projectId?: string | undefined | null | undefined
     sessionPath?: string | undefined | null | undefined
+    localDraftSessionPath?: string | undefined | null | undefined
+    runtime?: PiRuntime | undefined | null | undefined
   } = {},
 ) {
+  const persistedSessionPath = getPersistedSessionPath(context.sessionPath)
   emitDesktopEvent({
     type: 'composer-update',
     composer,
     projectId: context.projectId ?? null,
     sessionPath: context.sessionPath ?? null,
+    localDraftSessionPath:
+      context.localDraftSessionPath ??
+      (context.runtime ? getRuntimeLocalDraftSessionAlias(context.runtime) : null) ??
+      (persistedSessionPath ? getLocalDraftSessionAlias(persistedSessionPath) : null),
   })
 }
 

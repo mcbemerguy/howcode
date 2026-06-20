@@ -3,128 +3,226 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   publishExternalThreadUpdate,
+  publishWorkflowStepThreadUpdate,
   shouldSuppressExternalThreadUpdate,
 } from './external-thread-publisher.ts'
 import { loadThreadSnapshot } from './thread-loader.ts'
 
 const WATCH_DEBOUNCE_MS = 140
+const WATCH_RETRY_MS = 500
 
-let currentSessionPath: string | null = null
-let currentWatcher: FSWatcher | null = null
-let currentWatchToken = 0
-let lastObservedModifiedMs = 0
-let pendingRefreshTimeout: ReturnType<typeof setTimeout> | null = null
-
-function clearPendingRefresh() {
-  if (!pendingRefreshTimeout) {
-    return
-  }
-
-  clearTimeout(pendingRefreshTimeout)
-  pendingRefreshTimeout = null
+type SessionWatcher = {
+  currentSessionPath: string | null
+  currentWatcher: FSWatcher | null
+  currentWatchToken: number
+  lastObservedModifiedMs: number
+  needsInitialRefresh: boolean
+  pendingRefreshTimeout: ReturnType<typeof setTimeout> | null
+  pendingWatchRetryTimeout: ReturnType<typeof setTimeout> | null
+  publishMode: 'external' | 'workflow-step'
 }
 
-function closeCurrentWatcher() {
-  clearPendingRefresh()
-  currentWatcher?.close()
-  currentWatcher = null
+const selectedSessionWatcher = createSessionWatcher('external')
+const workflowStepSessionWatcher = createSessionWatcher('workflow-step')
+
+function createSessionWatcher(publishMode: SessionWatcher['publishMode']): SessionWatcher {
+  return {
+    currentSessionPath: null,
+    currentWatcher: null,
+    currentWatchToken: 0,
+    lastObservedModifiedMs: 0,
+    needsInitialRefresh: false,
+    pendingRefreshTimeout: null,
+    pendingWatchRetryTimeout: null,
+    publishMode,
+  }
 }
 
-async function refreshWatchedSession(sessionPath: string, watchToken: number) {
-  if (currentSessionPath !== sessionPath || currentWatchToken !== watchToken) {
-    return
-  }
+function clearPendingRefresh(state: SessionWatcher) {
+  if (!state.pendingRefreshTimeout) return
+  clearTimeout(state.pendingRefreshTimeout)
+  state.pendingRefreshTimeout = null
+}
 
-  if (shouldSuppressExternalThreadUpdate(sessionPath)) {
+function clearPendingWatchRetry(state: SessionWatcher) {
+  if (!state.pendingWatchRetryTimeout) return
+  clearTimeout(state.pendingWatchRetryTimeout)
+  state.pendingWatchRetryTimeout = null
+}
+
+function closeCurrentWatcher(state: SessionWatcher) {
+  clearPendingRefresh(state)
+  clearPendingWatchRetry(state)
+  state.currentWatcher?.close()
+  state.currentWatcher = null
+}
+
+async function publishThreadUpdate(
+  state: SessionWatcher,
+  snapshot: Awaited<ReturnType<typeof loadThreadSnapshot>>,
+  sessionPath: string,
+  lastModifiedMs: number,
+) {
+  const input = {
+    projectId: snapshot.projectId,
+    threadId: snapshot.threadId,
+    sessionPath,
+    thread: snapshot.thread,
+    lastModifiedMs,
+  }
+  if (state.publishMode === 'workflow-step') {
+    await publishWorkflowStepThreadUpdate(input)
     return
   }
+  await publishExternalThreadUpdate(input)
+}
+
+async function refreshWatchedSession(
+  state: SessionWatcher,
+  sessionPath: string,
+  watchToken: number,
+) {
+  if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
+  if (shouldSuppressExternalThreadUpdate(sessionPath)) return
 
   let fileStats: Awaited<ReturnType<typeof stat>>
-
   try {
     fileStats = await stat(sessionPath)
   } catch {
+    if (state.needsInitialRefresh)
+      scheduleWatchedSessionRefreshAfter(state, sessionPath, watchToken, WATCH_RETRY_MS)
     return
   }
 
-  if (fileStats.mtimeMs <= lastObservedModifiedMs) {
-    return
-  }
+  if (fileStats.mtimeMs <= state.lastObservedModifiedMs) return
 
   try {
     const snapshot = await loadThreadSnapshot(sessionPath)
-    if (currentSessionPath !== sessionPath || currentWatchToken !== watchToken) {
-      return
-    }
+    if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
 
-    lastObservedModifiedMs = fileStats.mtimeMs
-    await publishExternalThreadUpdate({
-      projectId: snapshot.projectId,
-      threadId: snapshot.threadId,
-      sessionPath,
-      thread: snapshot.thread,
-      lastModifiedMs: fileStats.mtimeMs,
-    })
+    state.lastObservedModifiedMs = fileStats.mtimeMs
+    state.needsInitialRefresh = false
+    await publishThreadUpdate(state, snapshot, sessionPath, fileStats.mtimeMs)
   } catch (error) {
     console.warn(`Failed to refresh watched Pi session: ${sessionPath}`, error)
+    if (state.needsInitialRefresh)
+      scheduleWatchedSessionRefreshAfter(state, sessionPath, watchToken, WATCH_RETRY_MS)
   }
 }
 
-function scheduleWatchedSessionRefresh(sessionPath: string, watchToken: number) {
-  clearPendingRefresh()
-  pendingRefreshTimeout = setTimeout(() => {
-    pendingRefreshTimeout = null
-    void refreshWatchedSession(sessionPath, watchToken)
-  }, WATCH_DEBOUNCE_MS)
+function scheduleWatchedSessionRefreshAfter(
+  state: SessionWatcher,
+  sessionPath: string,
+  watchToken: number,
+  delayMs: number,
+) {
+  clearPendingRefresh(state)
+  state.pendingRefreshTimeout = setTimeout(() => {
+    state.pendingRefreshTimeout = null
+    void refreshWatchedSession(state, sessionPath, watchToken)
+  }, delayMs)
 }
 
-export async function setWatchedSessionPath(sessionPath: string | null) {
-  if (sessionPath === currentSessionPath) {
-    return
-  }
+function scheduleWatchedSessionRefresh(
+  state: SessionWatcher,
+  sessionPath: string,
+  watchToken: number,
+) {
+  scheduleWatchedSessionRefreshAfter(state, sessionPath, watchToken, WATCH_DEBOUNCE_MS)
+}
 
-  currentWatchToken += 1
-  currentSessionPath = sessionPath
-  lastObservedModifiedMs = 0
-  closeCurrentWatcher()
+function scheduleWatcherRetry(state: SessionWatcher, sessionPath: string, watchToken: number) {
+  clearPendingWatchRetry(state)
+  state.pendingWatchRetryTimeout = setTimeout(() => {
+    state.pendingWatchRetryTimeout = null
+    void attachWatcher(state, sessionPath, watchToken)
+  }, WATCH_RETRY_MS)
+}
 
-  if (!sessionPath) {
-    return
-  }
+async function attachWatcher(state: SessionWatcher, sessionPath: string, watchToken: number) {
+  if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
 
   try {
     const fileStats = await stat(sessionPath)
-    lastObservedModifiedMs = fileStats.mtimeMs
+    if (!state.needsInitialRefresh) state.lastObservedModifiedMs = fileStats.mtimeMs
   } catch {
-    lastObservedModifiedMs = 0
+    state.lastObservedModifiedMs = 0
+    state.needsInitialRefresh = true
   }
 
-  const watchToken = currentWatchToken
   const watchedFileName = path.basename(sessionPath)
   const watchedDirectory = path.dirname(sessionPath)
 
-  currentWatcher = watch(watchedDirectory, (_eventType, changedFileName) => {
-    if (currentSessionPath !== sessionPath || currentWatchToken !== watchToken) {
+  try {
+    const watcher = watch(watchedDirectory, (_eventType, changedFileName) => {
+      if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
+
+      if (typeof changedFileName === 'string' && changedFileName.length > 0) {
+        if (changedFileName !== watchedFileName) return
+      }
+
+      scheduleWatchedSessionRefresh(state, sessionPath, watchToken)
+    })
+
+    if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) {
+      watcher.close()
       return
     }
 
-    if (typeof changedFileName === 'string' && changedFileName.length > 0) {
-      if (changedFileName !== watchedFileName) {
-        return
-      }
-    }
-
-    scheduleWatchedSessionRefresh(sessionPath, watchToken)
-  })
-
-  currentWatcher.on('error', (error) => {
+    state.currentWatcher = watcher
+    watcher.on('error', (error) => {
+      if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
+      console.warn(`Pi session watcher failed for ${sessionPath}`, error)
+      state.currentWatcher?.close()
+      state.currentWatcher = null
+      state.lastObservedModifiedMs = 0
+      state.needsInitialRefresh = true
+      scheduleWatcherRetry(state, sessionPath, watchToken)
+    })
+  } catch (error) {
+    if (state.currentSessionPath !== sessionPath || state.currentWatchToken !== watchToken) return
     console.warn(`Pi session watcher failed for ${sessionPath}`, error)
-  })
+    state.currentWatcher = null
+    state.lastObservedModifiedMs = 0
+    state.needsInitialRefresh = true
+    scheduleWatcherRetry(state, sessionPath, watchToken)
+    return
+  }
+
+  if (state.needsInitialRefresh) scheduleWatchedSessionRefresh(state, sessionPath, watchToken)
+}
+
+async function setWatcherSessionPath(state: SessionWatcher, sessionPath: string | null) {
+  if (sessionPath === state.currentSessionPath) return
+
+  state.currentWatchToken += 1
+  state.currentSessionPath = sessionPath
+  state.lastObservedModifiedMs = 0
+  state.needsInitialRefresh = false
+  closeCurrentWatcher(state)
+
+  if (!sessionPath) return
+
+  await attachWatcher(state, sessionPath, state.currentWatchToken)
+}
+
+function disposeWatcher(state: SessionWatcher) {
+  state.currentWatchToken += 1
+  state.currentSessionPath = null
+  state.lastObservedModifiedMs = 0
+  state.needsInitialRefresh = false
+  closeCurrentWatcher(state)
+}
+
+export async function setWatchedSessionPath(sessionPath: string | null) {
+  await setWatcherSessionPath(selectedSessionWatcher, sessionPath)
+}
+
+export async function setWatchedWorkflowStepSessionPath(sessionPath: string | null) {
+  await setWatcherSessionPath(workflowStepSessionWatcher, sessionPath)
 }
 
 export function disposeSessionWatcher() {
-  currentWatchToken += 1
-  currentSessionPath = null
-  lastObservedModifiedMs = 0
-  closeCurrentWatcher()
+  disposeWatcher(selectedSessionWatcher)
+  disposeWatcher(workflowStepSessionWatcher)
 }

@@ -1,7 +1,7 @@
 import { getPersistedSessionPath } from '@howcode/shared/session-paths'
 import type { Dispatch } from 'react'
 import { useEffect } from 'react'
-import { watchSessionQuery } from '../query/desktop-query'
+import { watchSessionQuery, watchWorkflowStepSessionQuery } from '../query/desktop-query'
 import type { WorkspaceAction, WorkspaceState } from '../state/workspace'
 import { isUtilityView } from '../state/workspace'
 
@@ -12,7 +12,10 @@ export function shouldCloseUtilityViewOnEscape(
   return isUtilityView(activeView) && event.key === 'Escape' && !event.defaultPrevented
 }
 
-export function useWatchedSessionSync(workspaceState: WorkspaceState) {
+export function useWatchedSessionSync(
+  workspaceState: WorkspaceState,
+  workflowStepSessionPath: string | null = null,
+) {
   useEffect(() => {
     const watchedSessionPath =
       workspaceState.activeView === 'chat' ||
@@ -25,6 +28,12 @@ export function useWatchedSessionSync(workspaceState: WorkspaceState) {
       console.warn('Failed to update watched Pi session.', error)
     })
   }, [workspaceState.activeView, workspaceState.selectedSessionPath])
+
+  useEffect(() => {
+    void watchWorkflowStepSessionQuery(workflowStepSessionPath).catch((error) => {
+      console.warn('Failed to update watched Pi workflow step session.', error)
+    })
+  }, [workflowStepSessionPath])
 }
 
 export function useUtilityViewEscape({

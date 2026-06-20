@@ -57,7 +57,13 @@ function ChatWorkspaceMain({
   handleLoadEarlierMessages,
 }: ChatWorkspaceContentProps) {
   return (
-    <main ref={mainViewRef} className="h-full min-h-0 overflow-hidden">
+    <main ref={mainViewRef} className="relative h-full min-h-0 overflow-hidden">
+      {controller.activeWorkflowStepSession ? (
+        <div className="pointer-events-none absolute top-3 left-1/2 z-10 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-full border border-[color:var(--accent-border)] bg-[color:var(--panel)]/95 px-3 py-1 text-center text-xs text-[color:var(--text-muted)] shadow-sm backdrop-blur">
+          Viewing workflow step {controller.activeWorkflowStepSession.stepId ?? 'session'}{' '}
+          transcript. The composer still controls the parent workflow.
+        </div>
+      ) : null}
       <ChatView
         key={activeThreadData?.sessionPath ?? 'new-chat'}
         messages={shouldShowConversationContent ? (activeThreadData?.messages ?? []) : []}

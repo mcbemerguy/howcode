@@ -38,6 +38,7 @@ export function useAppShellEffects({
   composerProjectId,
   shellComposerState,
   shellAppSettings,
+  workflowStepSessionPath,
   loadProjectThreads,
   loadArchivedThreads,
   loadComposerState,
@@ -61,6 +62,7 @@ export function useAppShellEffects({
   composerProjectId: string
   shellComposerState: ComposerState | null | undefined
   shellAppSettings: AppSettings | null | undefined
+  workflowStepSessionPath?: string | null | undefined
   loadProjectThreads: (
     projectId: string,
     options?: {
@@ -116,7 +118,7 @@ export function useAppShellEffects({
     setProjectGitLoading,
   })
 
-  useWatchedSessionSync(workspaceState)
+  useWatchedSessionSync(workspaceState, workflowStepSessionPath ?? null)
   useUtilityViewEscape({ activeView: workspaceState.activeView, dispatch })
   useTerminalGitStateSync({ composerProjectId, loadProjectGitState, setProjectGitState })
 
