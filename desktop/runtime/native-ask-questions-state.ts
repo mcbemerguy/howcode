@@ -1,3 +1,4 @@
+// Pi UI bridge Howcode adapter. Managed by integrations/howcode/scripts/patch-howcode.mjs.
 import type { NativeAskQuestionsRequest } from '../../shared/desktop-contracts.ts'
 
 type PendingRequest = NativeAskQuestionsRequest & {
