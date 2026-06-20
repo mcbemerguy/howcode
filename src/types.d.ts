@@ -1,4 +1,4 @@
-import type { DesktopRequestMap } from '../shared/desktop-ipc'
+import type { DesktopRequestMap, DesktopSessionWatchRole } from '../shared/desktop-ipc'
 import type { DesktopAction } from './app/desktop/actions'
 import type {
   AnyDesktopActionPayload,
@@ -215,8 +215,10 @@ declare global {
       getArchivedThreads?: () => Promise<ArchivedThread[]>
       getThread?: (sessionPath: string, historyCompactions?: number) => Promise<ThreadData | null>
       searchThread?: (sessionPath: string, query: string) => Promise<ThreadSearchResult>
-      watchSession?: (sessionPath: string | null) => Promise<void>
-      watchWorkflowStepSession?: (sessionPath: string | null) => Promise<void>
+      watchSession?: (
+        sessionPath: string | null,
+        role?: DesktopSessionWatchRole | undefined,
+      ) => Promise<void>
       listTerminals?: () => Promise<TerminalSessionSnapshot[]>
       openTerminal?: (request: TerminalOpenRequest) => Promise<TerminalSessionSnapshot>
       writeTerminal?: (sessionId: string, data: string) => Promise<void>

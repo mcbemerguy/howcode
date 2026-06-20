@@ -1,7 +1,7 @@
 const pathSeparatorPattern = /[\\/]/
 
 import { fallbackAppSlashCommands } from '@howcode/shared/composer-slash-commands'
-import type { DesktopRequestMap } from '@howcode/shared/desktop-ipc'
+import type { DesktopRequestMap, DesktopSessionWatchRole } from '@howcode/shared/desktop-ipc'
 import type {
   AppUpdateState,
   ArchivedThread,
@@ -337,10 +337,9 @@ export function subscribeDesktopEvents(
   return window.piDesktop?.subscribe?.(listener) ?? (() => undefined)
 }
 
-export async function watchSessionQuery(sessionPath: string | null): Promise<void> {
-  await window.piDesktop?.watchSession?.(sessionPath)
-}
-
-export async function watchWorkflowStepSessionQuery(sessionPath: string | null): Promise<void> {
-  await window.piDesktop?.watchWorkflowStepSession?.(sessionPath)
+export async function watchSessionQuery(
+  sessionPath: string | null,
+  role: DesktopSessionWatchRole = 'primary',
+): Promise<void> {
+  await window.piDesktop?.watchSession?.(sessionPath, role)
 }

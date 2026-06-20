@@ -73,7 +73,7 @@ export function useAppShellController() {
     composerProjectId: viewModel.composerProjectId,
     shellComposerState: desktopShell.shellState?.composer,
     shellAppSettings: desktopShell.shellState?.appSettings,
-    workflowStepSessionPath: activeWorkflowStepSession?.sessionPath ?? null,
+    secondarySessionPath: activeWorkflowStepSession?.sessionPath ?? null,
     loadProjectThreads: desktopShell.loadProjectThreads,
     loadArchivedThreads: desktopShell.loadArchivedThreads,
     loadComposerState: desktopShell.loadComposerState,

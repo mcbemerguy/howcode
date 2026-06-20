@@ -294,8 +294,10 @@ export type DesktopRequestMap = {
     params: { sessionPath: string; query: string }
     response: ThreadSearchResult
   }
-  watchSession: { params: { sessionPath: string | null }; response: { ok: boolean } }
-  watchWorkflowStepSession: { params: { sessionPath: string | null }; response: { ok: boolean } }
+  watchSession: {
+    params: { sessionPath: string | null; role?: DesktopSessionWatchRole | undefined }
+    response: { ok: boolean }
+  }
   invokeAction: {
     params: { action: DesktopAction; payload?: AnyDesktopActionPayload | undefined }
     response: DesktopActionResult
@@ -325,6 +327,7 @@ export type DesktopEventMap = {
 
 export type DesktopRequestChannel = keyof DesktopRequestMap
 export type DesktopEventChannel = keyof DesktopEventMap
+export type DesktopSessionWatchRole = 'primary' | 'secondary'
 
 export type DesktopRequestHandlerMap = {
   [K in DesktopRequestChannel]: (

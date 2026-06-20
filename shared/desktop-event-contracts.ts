@@ -54,7 +54,7 @@ export type DesktopEvent =
         | 'update'
         | 'end'
         | 'external'
-        | 'workflow-step'
+        | 'secondary-session'
         | 'compaction-start'
         | 'compaction'
       projectId: string

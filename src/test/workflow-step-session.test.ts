@@ -75,6 +75,25 @@ describe('workflow step session selection', () => {
     })
   })
 
+  it('trims selected child session paths and ignores blank paths', () => {
+    expect(
+      selectActiveWorkflowStepSession(
+        composerState([
+          workflowRun({
+            runId: 'blank',
+            childSessionPath: '   ',
+            updatedAt: '2026-05-20T12:02:00.000Z',
+          }),
+          workflowRun({
+            runId: 'trimmed',
+            childSessionPath: '  /tmp/trimmed.jsonl  ',
+            updatedAt: '2026-05-20T12:01:00.000Z',
+          }),
+        ]),
+      )?.sessionPath,
+    ).toBe('/tmp/trimmed.jsonl')
+  })
+
   it('does not select terminal or missing child sessions', () => {
     expect(
       selectActiveWorkflowStepSession(

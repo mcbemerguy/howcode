@@ -108,7 +108,7 @@ export async function publishExternalThreadUpdate({
   })
 }
 
-export async function publishWorkflowStepThreadUpdate({
+export async function publishSecondaryThreadUpdate({
   projectId,
   sessionPath,
   thread,
@@ -118,7 +118,7 @@ export async function publishWorkflowStepThreadUpdate({
   rememberLiveThread(sessionPath, thread)
   emitDesktopEvent({
     type: 'thread-update',
-    reason: 'workflow-step',
+    reason: 'secondary-session',
     projectId,
     threadId,
     sessionPath,

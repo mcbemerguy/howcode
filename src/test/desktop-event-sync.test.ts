@@ -129,6 +129,23 @@ describe('desktop event selection helpers', () => {
     ).toBe(false)
   })
 
+  it('does not map secondary session updates onto selected local drafts', () => {
+    const draft = createLocalThreadDraft('/repo/project-a', 'draft')
+
+    expect(
+      shouldDisplayStartedThreadForLocalDraft({
+        reason: 'secondary-session',
+        projectId: draft.projectId,
+        isChat: false,
+        workspaceState: selectionState({
+          activeView: 'thread',
+          selectedProjectId: draft.projectId,
+          selectedSessionPath: draft.sessionPath,
+        }),
+      }),
+    ).toBe(false)
+  })
+
   it('does not auto-open non-start updates or when a persisted session is visible', () => {
     expect(
       shouldAutoOpenStartedThread({

@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   publishExternalThreadUpdate,
-  publishWorkflowStepThreadUpdate,
+  publishSecondaryThreadUpdate,
   shouldSuppressExternalThreadUpdate,
 } from './external-thread-publisher.ts'
 import { loadThreadSnapshot } from './thread-loader.ts'
@@ -19,11 +19,11 @@ type SessionWatcher = {
   needsInitialRefresh: boolean
   pendingRefreshTimeout: ReturnType<typeof setTimeout> | null
   pendingWatchRetryTimeout: ReturnType<typeof setTimeout> | null
-  publishMode: 'external' | 'workflow-step'
+  publishMode: 'external' | 'secondary'
 }
 
 const selectedSessionWatcher = createSessionWatcher('external')
-const workflowStepSessionWatcher = createSessionWatcher('workflow-step')
+const secondarySessionWatcher = createSessionWatcher('secondary')
 
 function createSessionWatcher(publishMode: SessionWatcher['publishMode']): SessionWatcher {
   return {
@@ -70,8 +70,8 @@ async function publishThreadUpdate(
     thread: snapshot.thread,
     lastModifiedMs,
   }
-  if (state.publishMode === 'workflow-step') {
-    await publishWorkflowStepThreadUpdate(input)
+  if (state.publishMode === 'secondary') {
+    await publishSecondaryThreadUpdate(input)
     return
   }
   await publishExternalThreadUpdate(input)
@@ -218,11 +218,11 @@ export async function setWatchedSessionPath(sessionPath: string | null) {
   await setWatcherSessionPath(selectedSessionWatcher, sessionPath)
 }
 
-export async function setWatchedWorkflowStepSessionPath(sessionPath: string | null) {
-  await setWatcherSessionPath(workflowStepSessionWatcher, sessionPath)
+export async function setWatchedSecondarySessionPath(sessionPath: string | null) {
+  await setWatcherSessionPath(secondarySessionWatcher, sessionPath)
 }
 
 export function disposeSessionWatcher() {
   disposeWatcher(selectedSessionWatcher)
-  disposeWatcher(workflowStepSessionWatcher)
+  disposeWatcher(secondarySessionWatcher)
 }

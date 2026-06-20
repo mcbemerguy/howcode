@@ -34,8 +34,8 @@ import {
 import { shutdownRuntimeHosts } from '../runtime-host/client-bridge.ts'
 import {
   disposeSessionWatcher,
+  setWatchedSecondarySessionPath,
   setWatchedSessionPath,
-  setWatchedWorkflowStepSessionPath,
 } from './session-watch.ts'
 
 export { refreshShellIndex } from './shell-index.ts'
@@ -96,8 +96,8 @@ export {
   loadProjectDiffImagePreview,
   loadProjectDiffStats,
   loadProjectGitState,
+  setWatchedSecondarySessionPath,
   setWatchedSessionPath,
-  setWatchedWorkflowStepSessionPath,
   startProjectDiffStream,
 }
 

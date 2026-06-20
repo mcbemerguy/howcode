@@ -37,7 +37,6 @@ type PiThreadsRequestHandlers = Pick<
   | 'getThread'
   | 'searchThread'
   | 'watchSession'
-  | 'watchWorkflowStepSession'
   | 'invokeAction'
 >
 
@@ -101,14 +100,13 @@ export function createPiThreadsHandlers(
     getThread: ({ sessionPath, historyCompactions = 0 }) =>
       piThreads.loadThread(sessionPath, { historyCompactions }),
     searchThread: ({ sessionPath, query }) => piThreads.searchThread(sessionPath, query),
-    watchSession: async ({ sessionPath }) => {
-      await piThreads.setWatchedSessionPath(sessionPath ? path.resolve(sessionPath) : null)
-      return { ok: true }
-    },
-    watchWorkflowStepSession: async ({ sessionPath }) => {
-      await piThreads.setWatchedWorkflowStepSessionPath(
-        sessionPath ? path.resolve(sessionPath) : null,
-      )
+    watchSession: async ({ sessionPath, role = 'primary' }) => {
+      const resolvedSessionPath = sessionPath ? path.resolve(sessionPath) : null
+      if (role === 'secondary') {
+        await piThreads.setWatchedSecondarySessionPath(resolvedSessionPath)
+      } else {
+        await piThreads.setWatchedSessionPath(resolvedSessionPath)
+      }
       return { ok: true }
     },
     invokeAction: async ({ action, payload = {} }) => {

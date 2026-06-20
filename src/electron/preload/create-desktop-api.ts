@@ -4,6 +4,7 @@ import {
   type DesktopEventMap,
   type DesktopRequestChannel,
   type DesktopRequestMap,
+  type DesktopSessionWatchRole,
   getDesktopEventIpcChannel,
   getDesktopRequestIpcChannel,
 } from '../../../shared/desktop-ipc'
@@ -200,11 +201,8 @@ function createArtifactAndThreadApi() {
       invokeRequest('getThread', { sessionPath, historyCompactions }),
     searchThread: (sessionPath: string, query: string) =>
       invokeRequest('searchThread', { sessionPath, query }),
-    watchSession: async (sessionPath: string | null) => {
-      await invokeRequest('watchSession', { sessionPath })
-    },
-    watchWorkflowStepSession: async (sessionPath: string | null) => {
-      await invokeRequest('watchWorkflowStepSession', { sessionPath })
+    watchSession: async (sessionPath: string | null, role: DesktopSessionWatchRole = 'primary') => {
+      await invokeRequest('watchSession', { sessionPath, role })
     },
   }
 }
