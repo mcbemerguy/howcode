@@ -24,6 +24,7 @@ export type {
 } from './desktop-clipboard-contracts'
 export type {
   ComposerAttachment,
+  ComposerBridgeState,
   ComposerContextUsage,
   ComposerFilePickerEntry,
   ComposerFilePickerState,

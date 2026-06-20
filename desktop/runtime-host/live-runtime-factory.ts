@@ -1,6 +1,4 @@
 import { normalizeModelRegistryContextWindows } from '../../shared/model-context-window-normalization.ts'
-import { getPersistedSessionPath } from '../../shared/session-paths.ts'
-import { ensureAskQuestionsExtensionRuntimePath } from '../native-extensions/ask-questions-extension-path.ts'
 import { getPiModule } from '../pi-module.ts'
 import {
   abortHeadlessExtensionCommand,
@@ -9,20 +7,13 @@ import {
 import { createArtifactTools } from '../runtime/artifact-tools.ts'
 import { createAttachmentFileTools } from '../runtime/attachment-file-tools.ts'
 import { getRuntimeSystemPrompt } from '../runtime/chat-system-prompt.ts'
-import { buildComposerState } from '../runtime/composer-state.ts'
 import {
   createIsolatedRuntimeResourceLoader,
   createRuntimeSettingsManager,
 } from '../runtime/isolated-settings-manager.ts'
 import type { PiRuntime } from '../runtime/types.ts'
-import { subscribeRuntimeWorkflowProgress } from '../runtime/workflow-progress-state.ts'
-import { publishComposerUpdate } from './live-thread-publisher.ts'
 import { invokeMainRequest } from './main-request-client.ts'
-import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
-import {
-  createPiAskUserQuestionsBridgeTools,
-  createPiUiBridgeExtensionFactories,
-} from './pi-ui-bridge-host.ts'
+import { createHowcodePiRuntimeAdapter } from './pi-ui-bridge-host.ts'
 import {
   bindRuntimeExtensionHandlers,
   refreshRuntimeExtensionHandlers,
@@ -33,64 +24,6 @@ type LiveRuntimeFactoryHandlers = {
   reloadRuntimeSettingsIfSafe: (runtimeKey: string) => Promise<boolean>
   scheduleRuntimeDisposal: (runtimeKey: string) => void
   suspendRuntimeDisposal: (runtimeKey: string) => void
-}
-
-function createRuntimeComposerPublisher(getRuntime: () => PiRuntime | null) {
-  return () => {
-    const activeRuntime = getRuntime()
-    if (!activeRuntime) return
-    void buildComposerState(activeRuntime).then((composer) => {
-      publishComposerUpdate(composer, {
-        projectId: activeRuntime.cwd,
-        sessionPath: activeRuntime.session.sessionFile,
-      })
-    })
-  }
-}
-
-async function createNativeAskQuestionToolsForRuntime(
-  options: Parameters<typeof createNativeAskQuestionsTools>[0] & {
-    enabledNativeExtensions: string[]
-  },
-) {
-  if (!options.enabledNativeExtensions.includes('askQuestions')) return []
-  return await createNativeAskQuestionsTools({
-    defineTool: options.defineTool,
-    extensionPath: options.extensionPath,
-    getRuntime: options.getRuntime,
-    onStateChange: options.onStateChange,
-  })
-}
-
-async function createPiAskUserQuestionToolsForRuntime(
-  options: Parameters<typeof createPiAskUserQuestionsBridgeTools>[0] & {
-    enabledNativeExtensions: string[]
-  },
-) {
-  if (!options.enabledNativeExtensions.includes('askQuestions')) return []
-  return await createPiAskUserQuestionsBridgeTools({
-    agentDir: options.agentDir,
-    getRuntime: options.getRuntime,
-    onStateChange: options.onStateChange,
-  })
-}
-
-async function getEnabledNativeExtensionsForRuntime(options: {
-  sessionManager?: PiRuntime['session']['sessionManager']
-}) {
-  const sessionPath = options.sessionManager?.getSessionFile?.() ?? null
-  if (sessionPath) {
-    const enabled = await invokeMainRequest('getSessionNativeExtensions', { sessionPath })
-    if (enabled) return enabled
-    const defaultEnabled = await invokeMainRequest('snapshotDefaultNativeExtensions', {})
-    await invokeMainRequest('setSessionNativeExtensions', {
-      sessionPath,
-      enabled: defaultEnabled,
-    })
-    return defaultEnabled
-  }
-
-  return await invokeMainRequest('snapshotDefaultNativeExtensions', {})
 }
 
 export async function createLiveRuntime(
@@ -126,11 +59,11 @@ export async function createLiveRuntime(
   })
   const sessionDir = options.sessionDir ?? settingsManager.getSessionDir() ?? undefined
   let runtime: PiRuntime | null = null
-  const publishRuntimeComposerState = createRuntimeComposerPublisher(() => runtime)
-  const piBridgeExtensionFactories = await createPiUiBridgeExtensionFactories({
+  const piRuntimeAdapter = await createHowcodePiRuntimeAdapter({
     agentDir,
+    defineTool,
     getRuntime: () => runtime,
-    onStateChange: publishRuntimeComposerState,
+    ...(options.sessionManager ? { sessionManager: options.sessionManager } : {}),
   })
   const resourceLoader = await createIsolatedRuntimeResourceLoader({
     DefaultResourceLoader,
@@ -139,23 +72,7 @@ export async function createLiveRuntime(
     settingsCwd: options.settingsCwd,
     settingsManager,
     systemPrompt: getRuntimeSystemPrompt({ settingsCwd: options.settingsCwd }),
-    extensionFactories: piBridgeExtensionFactories,
-  })
-  const enabledNativeExtensions = await getEnabledNativeExtensionsForRuntime(
-    options.sessionManager ? { sessionManager: options.sessionManager } : {},
-  )
-  const nativeAskQuestionTools = await createNativeAskQuestionToolsForRuntime({
-    enabledNativeExtensions,
-    defineTool,
-    extensionPath: ensureAskQuestionsExtensionRuntimePath() ?? '',
-    getRuntime: () => runtime,
-    onStateChange: publishRuntimeComposerState,
-  })
-  const piAskUserQuestionTools = await createPiAskUserQuestionToolsForRuntime({
-    enabledNativeExtensions,
-    agentDir,
-    getRuntime: () => runtime,
-    onStateChange: publishRuntimeComposerState,
+    extensionFactories: piRuntimeAdapter.extensionFactories,
   })
   const attachmentFileTools = options.settingsCwd
     ? createAttachmentFileTools({
@@ -184,12 +101,11 @@ export async function createLiveRuntime(
               listArtifacts: (conversationId) =>
                 invokeMainRequest('listArtifacts', { conversationId }),
             }),
-            ...nativeAskQuestionTools,
-            ...piAskUserQuestionTools,
+            ...piRuntimeAdapter.customTools,
           ],
         }
-      : nativeAskQuestionTools.length > 0 || piAskUserQuestionTools.length > 0
-        ? { customTools: [...nativeAskQuestionTools, ...piAskUserQuestionTools] }
+      : piRuntimeAdapter.customTools.length > 0
+        ? { customTools: piRuntimeAdapter.customTools }
         : {}),
   })
   runtime = {
@@ -198,16 +114,6 @@ export async function createLiveRuntime(
     chatGroupId: options.chatGroupId ?? null,
     attachmentFileAccess: attachmentFileTools?.access,
   } satisfies PiRuntime
-
-  if (!options.sessionManager) {
-    const runtimeKey = getPersistedSessionPath(runtime.session.sessionFile)
-    if (runtimeKey) {
-      await invokeMainRequest('setSessionNativeExtensions', {
-        sessionPath: runtimeKey,
-        enabled: enabledNativeExtensions,
-      })
-    }
-  }
 
   session.subscribe((event) =>
     handleRuntimeSessionEvent(runtime, event, {
@@ -222,7 +128,7 @@ export async function createLiveRuntime(
     isRuntimeExtensionCommandRunning,
     reloadRuntimeSettingsIfSafe: handlers.reloadRuntimeSettingsIfSafe,
   })
-  subscribeRuntimeWorkflowProgress(runtime, publishRuntimeComposerState, { agentDir })
+  await piRuntimeAdapter.bindRuntime(runtime)
   return runtime
 }
 

@@ -10,7 +10,7 @@ export function useComposerAskQuestionsActions({
 }: {
   chatGroupId: string | null | undefined
   composerMode: 'chat' | 'code'
-  nativeAskQuestionsRequest: ComposerProps['nativeAskQuestionsRequest']
+  nativeAskQuestionsRequest: ComposerProps['bridgeState']['nativeAskQuestionsRequest']
   projectId: string
   runComposerAction: (
     action: Parameters<ComposerProps['onAction']>[0],

@@ -2,6 +2,7 @@ import { QueuedPromptsCard } from '@howcode/composer'
 import { GitOpsComposerPanel } from '@howcode/native-gitops'
 import { Composer } from '@howcode/workspace-shell'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import type { ComposerBridgeState } from '../desktop/types'
 import type { Message } from '../types'
 import { cn } from '../utils/cn'
 import { WorkspaceComposerDock } from '../workspace-shell/workspace-composer-dock'
@@ -9,6 +10,13 @@ import { FALLBACK_APP_SETTINGS } from './code-workspace-defaults'
 import { CodeWorkspaceMainArea } from './code-workspace-main-area'
 import type { CodeWorkspaceContentProps } from './code-workspace-view'
 import { DesktopComposerStatusModelPicker } from './desktop-composer-status'
+
+const EMPTY_BRIDGE_STATE = {
+  nativeInteractionRequests: [],
+  nativeAskQuestionsRequest: null,
+  workflowProgressRuns: [],
+  piNotifications: [],
+} satisfies ComposerBridgeState
 
 function getReplyActivityKey(messages: readonly Message[]) {
   const replyMessageIds: string[] = []
@@ -181,10 +189,7 @@ function CodeThreadComposer(props: CodeWorkspaceContentProps) {
       replyActivityKey={getReplyActivityKey(activeThreadData?.messages ?? [])}
       isCompacting={activeComposerState?.isCompacting ?? false}
       isExtensionCommandRunning={activeComposerState?.isExtensionCommandRunning ?? false}
-      nativeInteractionRequests={activeComposerState?.nativeInteractionRequests ?? []}
-      nativeAskQuestionsRequest={activeComposerState?.nativeAskQuestionsRequest ?? null}
-      workflowProgressRuns={activeComposerState?.workflowProgressRuns ?? []}
-      piNotifications={activeComposerState?.piNotifications ?? []}
+      bridgeState={activeComposerState?.bridge ?? EMPTY_BRIDGE_STATE}
       thinkingLevel={activeComposerState?.currentThinkingLevel ?? 'off'}
       restoredQueuedPrompt={scopedRestoredQueuedPrompt}
       streamingBehaviorPreference={appSettings.composerStreamingBehavior}

@@ -2,6 +2,7 @@ import type { ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import type {
+  ComposerBridgeState,
   ComposerContextUsage,
   ComposerModel,
   ComposerQueuedPrompt,
@@ -63,6 +64,24 @@ function buildSessionQueuedPrompts(session: AgentSession): ComposerQueuedPrompt[
     steering: [...session.getSteeringMessages()],
     followUp: [...session.getFollowUpMessages()],
   })
+}
+
+function buildEmptyBridgeState(): ComposerBridgeState {
+  return {
+    nativeInteractionRequests: [],
+    nativeAskQuestionsRequest: null,
+    workflowProgressRuns: [],
+    piNotifications: [],
+  }
+}
+
+function buildRuntimeBridgeState(runtime: PiRuntime): ComposerBridgeState {
+  return {
+    nativeInteractionRequests: getNativeInteractionRequests(runtime),
+    nativeAskQuestionsRequest: getNativeAskQuestionsRequest(runtime),
+    workflowProgressRuns: getWorkflowProgressRuns(runtime),
+    piNotifications: getPiNotifications(runtime),
+  }
 }
 
 function mapContextUsage(session: AgentSession): ComposerContextUsage | null {
@@ -275,10 +294,7 @@ export async function buildComposerStateSnapshot(
     currentThinkingLevel: snapshot.currentThinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,
     queuedPrompts: [],
-    nativeInteractionRequests: [],
-    nativeAskQuestionsRequest: null,
-    workflowProgressRuns: [],
-    piNotifications: [],
+    bridge: buildEmptyBridgeState(),
     contextUsage: snapshot.contextUsage,
     isCompacting: false,
     isExtensionCommandRunning: false,
@@ -303,10 +319,7 @@ export async function buildComposerState(
     currentThinkingLevel: runtime.session.thinkingLevel as ComposerThinkingLevel,
     availableThinkingLevels: mapThinkingLevels(runtime.session.getAvailableThinkingLevels()),
     queuedPrompts: buildSessionQueuedPrompts(runtime.session),
-    nativeInteractionRequests: getNativeInteractionRequests(runtime),
-    nativeAskQuestionsRequest: getNativeAskQuestionsRequest(runtime),
-    workflowProgressRuns: getWorkflowProgressRuns(runtime),
-    piNotifications: getPiNotifications(runtime),
+    bridge: buildRuntimeBridgeState(runtime),
     contextUsage: getContextUsageForComposerState(runtime.session, options),
     isCompacting: runtime.session.isCompacting,
     isExtensionCommandRunning: isHeadlessExtensionCommandRunning(runtime.session),

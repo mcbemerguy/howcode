@@ -110,6 +110,13 @@ export type PiWorkflowProgressRun = {
   terminal: boolean
 }
 
+export type ComposerBridgeState = {
+  nativeInteractionRequests: NativeInteractionRequest[]
+  nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
+  workflowProgressRuns: PiWorkflowProgressRun[]
+  piNotifications: PiNotification[]
+}
+
 export type ComposerModel = {
   provider: string
   id: string
@@ -130,10 +137,7 @@ export type ComposerState = {
   currentThinkingLevel: ComposerThinkingLevel
   availableThinkingLevels: ComposerThinkingLevel[]
   queuedPrompts: ComposerQueuedPrompt[]
-  nativeInteractionRequests: NativeInteractionRequest[]
-  nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
-  workflowProgressRuns: PiWorkflowProgressRun[]
-  piNotifications: PiNotification[]
+  bridge: ComposerBridgeState
   contextUsage: ComposerContextUsage | null
   isCompacting: boolean
   isExtensionCommandRunning: boolean

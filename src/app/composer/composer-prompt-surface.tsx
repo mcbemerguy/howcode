@@ -48,9 +48,7 @@ export function ComposerPromptSurface({
   replyActivityKey,
   isCompacting,
   isExtensionCommandRunning,
-  nativeAskQuestionsRequest,
-  workflowProgressRuns,
-  piNotifications,
+  bridgeState,
   thinkingLevel,
   restoredQueuedPrompt,
   streamingBehaviorPreference,
@@ -154,6 +152,7 @@ export function ComposerPromptSurface({
   const skillMentionPanelRef = useRef<HTMLDivElement>(null)
   const stopButtonBoundaryRef = useRef<HTMLDivElement>(null)
   const askQuestionsOverlayRef = useRef<HTMLDivElement>(null)
+  const { nativeAskQuestionsRequest, workflowProgressRuns, piNotifications } = bridgeState
   const showAskQuestions = nativeAskQuestionsRequest !== null
   const { answerNativeQuestions } = useComposerAskQuestionsActions({
     chatGroupId,

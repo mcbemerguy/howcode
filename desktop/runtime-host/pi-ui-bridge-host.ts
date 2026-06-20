@@ -9,12 +9,26 @@ import type {
   PiAskUserQuestionsQuestion,
   PiAskUserQuestionsResponse,
 } from '../../shared/desktop-contracts.ts'
+import { getPersistedSessionPath } from '../../shared/session-paths.ts'
+import { ensureAskQuestionsExtensionRuntimePath } from '../native-extensions/ask-questions-extension-path.ts'
+import { buildComposerState } from '../runtime/composer-state.ts'
 import { createPendingNativeAskQuestionsRequest } from '../runtime/native-ask-questions-state.ts'
 import { recordPiNotificationEvent } from '../runtime/pi-notification-state.ts'
-import { recordRuntimeWorkflowProgressBridgeEvent } from '../runtime/workflow-progress-state.ts'
+import type { PiRuntime } from '../runtime/types.ts'
+import {
+  recordRuntimeWorkflowProgressBridgeEvent,
+  subscribeRuntimeWorkflowProgress,
+} from '../runtime/workflow-progress-state.ts'
+import { publishComposerUpdate } from './live-thread-publisher.ts'
+import { invokeMainRequest } from './main-request-client.ts'
+import { createNativeAskQuestionsTools } from './native-ask-questions-tool.ts'
 
 type RuntimeLike = {
-  session: { sessionFile?: string | undefined }
+  cwd?: string | undefined
+  session: {
+    sessionFile?: string | undefined
+    sessionManager?: PiRuntime['session']['sessionManager']
+  }
 }
 
 type UiInteractionRequest = {
@@ -179,7 +193,24 @@ async function requestAskUserQuestionsInComposer({
   return { requestId: request.id, value }
 }
 
-export function createHowcodePiBridgeHost({
+function createRuntimeComposerPublisher(
+  getRuntime: () => PiRuntime | null,
+  onStateChange?: (() => void) | undefined,
+) {
+  return () => {
+    const activeRuntime = getRuntime()
+    if (!activeRuntime) return
+    onStateChange?.()
+    void buildComposerState(activeRuntime).then((composer) => {
+      publishComposerUpdate(composer, {
+        projectId: activeRuntime.cwd,
+        sessionPath: activeRuntime.session.sessionFile,
+      })
+    })
+  }
+}
+
+function createHowcodePiBridgeHost({
   getRuntime,
   onStateChange,
 }: {
@@ -214,33 +245,27 @@ export function createHowcodePiBridgeHost({
   }
 }
 
-export async function createPiAskUserQuestionsBridgeTools({
+async function createPiAskUserQuestionsBridgeTools({
   agentDir,
-  getRuntime,
-  onStateChange,
+  host,
 }: {
   agentDir: string
-  getRuntime: () => RuntimeLike | null
-  onStateChange: () => void
+  host: UiBridgeHost
 }) {
   const toolPath = path.join(agentDir, 'extensions/ask-user-questions/tool.ts')
   const module = (await import(pathToFileURL(toolPath).href)) as AskUserQuestionsModule
-  const host = createHowcodePiBridgeHost({ getRuntime, onStateChange })
   return [module.createAskUserQuestionsTool({ host }) as AgentTool]
 }
 
-export async function createPiUiBridgeExtensionFactories({
+async function createPiUiBridgeExtensionFactories({
   agentDir,
-  getRuntime,
-  onStateChange,
+  host,
 }: {
   agentDir: string
-  getRuntime: () => RuntimeLike | null
-  onStateChange: () => void
+  host: UiBridgeHost
 }) {
   const forwarderPath = path.join(agentDir, 'ui-bridge/event-forwarder.ts')
   const module = (await import(pathToFileURL(forwarderPath).href)) as UiBridgeEventForwarderModule
-  const host = createHowcodePiBridgeHost({ getRuntime, onStateChange })
   return [
     module.createUiBridgeEventForwardingExtension({
       host,
@@ -250,4 +275,93 @@ export async function createPiUiBridgeExtensionFactories({
       },
     }),
   ]
+}
+
+async function getEnabledNativeExtensionsForRuntime(options: {
+  sessionManager?: PiRuntime['session']['sessionManager']
+}) {
+  const sessionPath = options.sessionManager?.getSessionFile?.() ?? null
+  if (sessionPath) {
+    const enabled = await invokeMainRequest('getSessionNativeExtensions', { sessionPath })
+    if (enabled) return enabled
+    const defaultEnabled = await invokeMainRequest('snapshotDefaultNativeExtensions', {})
+    await invokeMainRequest('setSessionNativeExtensions', {
+      sessionPath,
+      enabled: defaultEnabled,
+    })
+    return defaultEnabled
+  }
+
+  return await invokeMainRequest('snapshotDefaultNativeExtensions', {})
+}
+
+async function createLegacyAskQuestionsTools({
+  defineTool,
+  enabledNativeExtensions,
+  extensionPath,
+  getRuntime,
+  onStateChange,
+}: Parameters<typeof createNativeAskQuestionsTools>[0] & {
+  enabledNativeExtensions: string[]
+}) {
+  if (!enabledNativeExtensions.includes('askQuestions')) return []
+  return await createNativeAskQuestionsTools({
+    defineTool,
+    extensionPath,
+    getRuntime,
+    onStateChange,
+  })
+}
+
+export async function createHowcodePiRuntimeAdapter({
+  agentDir,
+  defineTool,
+  enabledNativeExtensions: enabledNativeExtensionsOverride,
+  getRuntime,
+  onStateChange,
+  sessionManager,
+}: {
+  agentDir: string
+  defineTool: Parameters<typeof createNativeAskQuestionsTools>[0]['defineTool']
+  enabledNativeExtensions?: string[] | undefined
+  getRuntime: () => PiRuntime | null
+  onStateChange?: (() => void) | undefined
+  sessionManager?: PiRuntime['session']['sessionManager'] | undefined
+}) {
+  const publishRuntimeComposerState = createRuntimeComposerPublisher(getRuntime, onStateChange)
+  const host = createHowcodePiBridgeHost({ getRuntime, onStateChange: publishRuntimeComposerState })
+  const extensionFactories = await createPiUiBridgeExtensionFactories({ agentDir, host })
+  const enabledNativeExtensions =
+    enabledNativeExtensionsOverride ??
+    (await getEnabledNativeExtensionsForRuntime(sessionManager ? { sessionManager } : {}))
+  const customTools = enabledNativeExtensions.includes('askQuestions')
+    ? [
+        ...(await createLegacyAskQuestionsTools({
+          enabledNativeExtensions,
+          defineTool,
+          extensionPath: ensureAskQuestionsExtensionRuntimePath() ?? '',
+          getRuntime,
+          onStateChange: publishRuntimeComposerState,
+        })),
+        ...(await createPiAskUserQuestionsBridgeTools({ agentDir, host })),
+      ]
+    : []
+
+  return {
+    customTools,
+    enabledNativeExtensions,
+    extensionFactories,
+    bindRuntime: async (runtime: PiRuntime) => {
+      if (!sessionManager) {
+        const runtimeKey = getPersistedSessionPath(runtime.session.sessionFile)
+        if (runtimeKey) {
+          await invokeMainRequest('setSessionNativeExtensions', {
+            sessionPath: runtimeKey,
+            enabled: enabledNativeExtensions,
+          })
+        }
+      }
+      subscribeRuntimeWorkflowProgress(runtime, publishRuntimeComposerState, { agentDir })
+    },
+  }
 }

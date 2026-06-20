@@ -22,7 +22,7 @@ function compareUpdatedAt(left: PiWorkflowProgressRun, right: PiWorkflowProgress
 export function selectActiveWorkflowStepSession(
   composerState: ComposerState | null | undefined,
 ): ActiveWorkflowStepSession | null {
-  const run = [...(composerState?.workflowProgressRuns ?? [])]
+  const run = [...(composerState?.bridge.workflowProgressRuns ?? [])]
     .filter((candidate) => !candidate.terminal && normalizeSessionPath(candidate.childSessionPath))
     .sort(compareUpdatedAt)
     .at(-1)

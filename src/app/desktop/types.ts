@@ -10,6 +10,7 @@ export type {
   ChatSidebarState,
   ChatThread,
   ComposerAttachment,
+  ComposerBridgeState,
   ComposerContextUsage,
   ComposerFilePickerEntry,
   ComposerFilePickerState,

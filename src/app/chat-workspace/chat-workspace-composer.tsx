@@ -5,7 +5,12 @@ import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type { AppShellController } from '../app-shell/useAppShellController'
 import { DesktopComposerStatusModelPicker } from '../code-workspace/desktop-composer-status'
 import type { useQueuedPromptRestore } from '../code-workspace/useQueuedPromptRestore'
-import type { AppSettings, ProjectDiffBaseline, ProjectDiffRenderMode } from '../desktop/types'
+import type {
+  AppSettings,
+  ComposerBridgeState,
+  ProjectDiffBaseline,
+  ProjectDiffRenderMode,
+} from '../desktop/types'
 import type { Message } from '../types'
 import { cn } from '../utils/cn'
 import { WorkspaceComposerDock } from '../workspace-shell/workspace-composer-dock'
@@ -46,6 +51,13 @@ const FALLBACK_APP_SETTINGS = {
   keybindings: {},
   composerSendMode: 'enter',
 } satisfies AppSettings
+
+const EMPTY_BRIDGE_STATE = {
+  nativeInteractionRequests: [],
+  nativeAskQuestionsRequest: null,
+  workflowProgressRuns: [],
+  piNotifications: [],
+} satisfies ComposerBridgeState
 
 export type ChatWorkspaceComposerProps = {
   activeComposerState: AppShellController['activeComposerState']
@@ -197,10 +209,7 @@ function ChatComposer(props: ChatWorkspaceComposerProps) {
       replyActivityKey={getReplyActivityKey(activeThreadData?.messages ?? [])}
       isCompacting={activeComposerState?.isCompacting ?? false}
       isExtensionCommandRunning={activeComposerState?.isExtensionCommandRunning ?? false}
-      nativeInteractionRequests={activeComposerState?.nativeInteractionRequests ?? []}
-      nativeAskQuestionsRequest={activeComposerState?.nativeAskQuestionsRequest ?? null}
-      workflowProgressRuns={activeComposerState?.workflowProgressRuns ?? []}
-      piNotifications={activeComposerState?.piNotifications ?? []}
+      bridgeState={activeComposerState?.bridge ?? EMPTY_BRIDGE_STATE}
       thinkingLevel={activeComposerState?.currentThinkingLevel ?? 'off'}
       restoredQueuedPrompt={scopedRestoredQueuedPrompt}
       streamingBehaviorPreference={appSettings.composerStreamingBehavior}

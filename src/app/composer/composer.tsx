@@ -3,16 +3,13 @@ import type { SettingsOpenTarget } from '@howcode/settings/settingsTypes'
 import type { ComposerSendMode, KeybindingOverrides } from '@howcode/shared/keybindings'
 import { type RefObject, useRef } from 'react'
 import type {
+  ComposerBridgeState,
   ComposerContextUsage,
   ComposerFilePickerState,
   ComposerModel,
   ComposerStreamingBehavior,
   ComposerThinkingLevel,
   DesktopActionInvoker,
-  NativeAskQuestionsRequest,
-  NativeInteractionRequest,
-  PiNotification,
-  PiWorkflowProgressRun,
   ProjectDiffBaseline,
   ProjectDiffRenderMode,
   ProjectGitState,
@@ -30,10 +27,7 @@ export type ComposerProps = {
   replyActivityKey: string
   isCompacting: boolean
   isExtensionCommandRunning: boolean
-  nativeInteractionRequests: NativeInteractionRequest[]
-  nativeAskQuestionsRequest: NativeAskQuestionsRequest | null
-  workflowProgressRuns: PiWorkflowProgressRun[]
-  piNotifications: PiNotification[]
+  bridgeState: ComposerBridgeState
   thinkingLevel: ComposerThinkingLevel
   restoredQueuedPrompt: string | null
   streamingBehaviorPreference: ComposerStreamingBehavior
