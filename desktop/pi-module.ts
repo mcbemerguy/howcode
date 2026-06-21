@@ -16,16 +16,20 @@ type PiModuleResolution = {
 
 const piCodingAgentDirEnvKey = 'PI_CODING_AGENT_DIR'
 const piPackageRelativePath = path.join('node_modules', '@earendil-works', 'pi-coding-agent')
-const requiredPiModuleExports = [
-  'AuthStorage',
-  'DefaultResourceLoader',
-  'ModelRegistry',
-  'SessionManager',
-  'SettingsManager',
-  'createAgentSession',
-  'defineTool',
-  'getAgentDir',
-] as const
+const requiredPiModuleExports = {
+  AuthStorage: 'function',
+  DefaultPackageManager: 'function',
+  DefaultResourceLoader: 'function',
+  ModelRegistry: 'function',
+  SessionManager: 'function',
+  SettingsManager: 'function',
+  createAgentSession: 'function',
+  createExtensionRuntime: 'function',
+  createLsToolDefinition: 'function',
+  createReadToolDefinition: 'function',
+  defineTool: 'function',
+  getAgentDir: 'function',
+} as const
 
 let piModuleResolutionPromise: Promise<PiModuleResolution> | undefined
 
@@ -67,10 +71,13 @@ function validatePiModule(module: unknown, packageRoot: string) {
   }
 
   const exports = module as Record<string, unknown>
-  const missing = requiredPiModuleExports.filter((name) => !(name in exports))
-  if (missing.length > 0) {
+  const invalid = Object.entries(requiredPiModuleExports).flatMap(([name, expectedType]) => {
+    const actual = exports[name]
+    return typeof actual === expectedType ? [] : [`${name} (${typeof actual})`]
+  })
+  if (invalid.length > 0) {
     throw new Error(
-      `Pi package at ${packageRoot} is missing required exports: ${missing.join(', ')}`,
+      `Pi package at ${packageRoot} is missing required exports or has incompatible export types: ${invalid.join(', ')}`,
     )
   }
 }
