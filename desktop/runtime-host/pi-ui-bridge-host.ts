@@ -2,7 +2,7 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import type { ExtensionFactory } from '@earendil-works/pi-coding-agent'
+import type { AgentSession, ExtensionFactory } from '@earendil-works/pi-coding-agent'
 import type {
   NativeAskQuestion,
   PiAskUserQuestionsPayload,
@@ -63,8 +63,17 @@ type UiBridgeHost = {
   emitEvent?: (event: UiBridgeEvent) => void | Promise<void>
 }
 
+export type PiUiBridgeSlashCommand = {
+  name: string
+  description?: string | undefined
+  source: 'extension' | 'prompt' | 'skill'
+  sourceInfo?: unknown | undefined
+}
+
 type PiUiBridgeEmbeddedModule = WorkflowProgressBridgeApi & {
   createAskUserQuestionsTool: (options: { host?: UiBridgeHost }) => unknown
+  getUiBridgeSessionCommands: (session: AgentSession) => PiUiBridgeSlashCommand[]
+  prepareUiBridgeCommandDiscoverySession: (session: AgentSession) => Promise<void>
   createUiBridgeEventForwardingExtension: (options: {
     host?: UiBridgeHost
     source?: { extension?: string; toolCallId?: string; sessionId?: string }
@@ -81,6 +90,8 @@ function isPiUiBridgeEmbeddedModule(value: unknown): value is PiUiBridgeEmbedded
   const candidate = value as Partial<PiUiBridgeEmbeddedModule>
   return (
     typeof candidate.createAskUserQuestionsTool === 'function' &&
+    typeof candidate.getUiBridgeSessionCommands === 'function' &&
+    typeof candidate.prepareUiBridgeCommandDiscoverySession === 'function' &&
     typeof candidate.createUiBridgeEventForwardingExtension === 'function' &&
     typeof candidate.normalizeWorkflowProgressEvent === 'function' &&
     typeof candidate.applyWorkflowProgressEvent === 'function' &&
@@ -278,6 +289,28 @@ function createHowcodePiBridgeHost({
       if (workflowChanged || notificationChanged) onStateChange()
     },
   }
+}
+
+export async function preparePiUiBridgeCommandDiscoverySession({
+  agentDir,
+  session,
+}: {
+  agentDir: string
+  session: AgentSession
+}) {
+  const bridgeApi = await loadPiUiBridgeEmbeddedModule(agentDir)
+  await bridgeApi.prepareUiBridgeCommandDiscoverySession(session)
+}
+
+export async function getPiUiBridgeSessionCommands({
+  agentDir,
+  session,
+}: {
+  agentDir: string
+  session: AgentSession
+}) {
+  const bridgeApi = await loadPiUiBridgeEmbeddedModule(agentDir)
+  return bridgeApi.getUiBridgeSessionCommands(session)
 }
 
 async function createPiAskUserQuestionsBridgeTools({

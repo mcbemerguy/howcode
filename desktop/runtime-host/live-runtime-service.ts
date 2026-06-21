@@ -32,7 +32,10 @@ import { buildComposerState, buildComposerStateSnapshot } from '../runtime/compo
 import { stopComposerRuntime } from '../runtime/composer-stop.ts'
 import { answerNativeAskQuestions as answerNativeAskQuestionsForRuntime } from '../runtime/native-ask-questions-state.ts'
 import type { PiRuntime } from '../runtime/types.ts'
-import { getComposerSessionResources } from './composer-resource-service.ts'
+import {
+  getComposerSessionResources,
+  getComposerSessionSlashCommands,
+} from './composer-resource-service.ts'
 import {
   abortRuntimeExtensionCommand,
   createRuntimeForNewSession,
@@ -44,7 +47,6 @@ import {
   withRuntimeMutationLock,
 } from './live-runtime-registry.ts'
 import { publishComposerUpdate, publishThreadUpdate } from './live-thread-publisher.ts'
-import { mapSessionCommands } from './slash-command-service.ts'
 
 async function emitComposerUpdate(request: ComposerStateRequest = {}) {
   const persistedSessionPath = getPersistedSessionPath(request.sessionPath)
@@ -63,7 +65,7 @@ async function emitComposerUpdate(request: ComposerStateRequest = {}) {
 }
 
 export async function getComposerSlashCommands(request: ComposerStateRequest = {}) {
-  return await getComposerSessionResources(request, mapSessionCommands)
+  return await getComposerSessionSlashCommands(request)
 }
 
 export async function getComposerSkills(request: ComposerStateRequest = {}) {

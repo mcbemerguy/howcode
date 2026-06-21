@@ -4,6 +4,7 @@ import {
   compactSlashCommand,
 } from '../../shared/composer-slash-commands.ts'
 import type { ComposerSlashCommand } from '../../shared/desktop-contracts.ts'
+import type { PiUiBridgeSlashCommand } from '../runtime-host/pi-ui-bridge-host.ts'
 import type { PiRuntime } from './types.ts'
 
 const reservedCommandNames = new Set([
@@ -12,7 +13,7 @@ const reservedCommandNames = new Set([
   compactSlashCommand.name,
 ])
 
-export function mapSessionCommands(session: PiRuntime['session']): ComposerSlashCommand[] {
+export function mapPiSessionCommands(piCommands: PiUiBridgeSlashCommand[]): ComposerSlashCommand[] {
   const commands: ComposerSlashCommand[] = [
     appSettingsSlashCommand,
     appNewSessionSlashCommand,
@@ -20,51 +21,51 @@ export function mapSessionCommands(session: PiRuntime['session']): ComposerSlash
   ]
   const extensionCommandNames = new Set<string>()
 
-  for (const command of session.extensionRunner.getRegisteredCommands()) {
-    if (reservedCommandNames.has(command.invocationName)) {
+  for (const command of piCommands) {
+    if (reservedCommandNames.has(command.name)) {
       continue
     }
 
-    extensionCommandNames.add(command.invocationName)
+    if (command.source !== 'extension' && extensionCommandNames.has(command.name)) {
+      continue
+    }
+
+    if (command.source === 'extension') {
+      extensionCommandNames.add(command.name)
+    }
+
     commands.push({
-      name: command.invocationName,
+      name: command.name,
       description: command.description,
-      source: 'extension',
+      source: command.source,
       sourceInfo: command.sourceInfo,
     })
   }
 
-  for (const template of session.promptTemplates) {
-    if (reservedCommandNames.has(template.name) || extensionCommandNames.has(template.name)) {
-      continue
-    }
+  return commands
+}
 
-    commands.push({
+export function mapSessionCommands(session: PiRuntime['session']): ComposerSlashCommand[] {
+  return mapPiSessionCommands([
+    ...session.extensionRunner.getRegisteredCommands().map((command) => ({
+      name: command.invocationName,
+      description: command.description,
+      source: 'extension' as const,
+      sourceInfo: command.sourceInfo,
+    })),
+    ...session.promptTemplates.map((template) => ({
       name: template.name,
       description: template.description,
-      source: 'prompt',
+      source: 'prompt' as const,
       sourceInfo: template.sourceInfo,
-    })
-  }
-
-  if (session.settingsManager.getEnableSkillCommands()) {
-    for (const skill of session.resourceLoader.getSkills().skills) {
-      const skillCommandName = `skill:${skill.name}`
-      if (
-        reservedCommandNames.has(skillCommandName) ||
-        extensionCommandNames.has(skillCommandName)
-      ) {
-        continue
-      }
-
-      commands.push({
-        name: skillCommandName,
-        description: skill.description,
-        source: 'skill',
-        sourceInfo: skill.sourceInfo,
-      })
-    }
-  }
-
-  return commands
+    })),
+    ...(session.settingsManager.getEnableSkillCommands()
+      ? session.resourceLoader.getSkills().skills.map((skill) => ({
+          name: `skill:${skill.name}`,
+          description: skill.description,
+          source: 'skill' as const,
+          sourceInfo: skill.sourceInfo,
+        }))
+      : []),
+  ])
 }
