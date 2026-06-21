@@ -4,6 +4,7 @@ import { getPersistedSessionPath } from '../../shared/session-paths.ts'
 import { getPiModule } from '../pi-module.ts'
 import {
   getPiUiBridgeSessionCommands,
+  isUnsupportedPiUiBridgeApiError,
   preparePiUiBridgeCommandDiscoverySession,
 } from '../runtime-host/pi-ui-bridge-host.ts'
 import { discoverHeadlessAgentSessionResources } from './agent-session-extensions.ts'
@@ -66,6 +67,7 @@ export async function getComposerSlashCommands(
     try {
       await preparePiUiBridgeCommandDiscoverySession({ agentDir, session: snapshot.session })
     } catch (error) {
+      if (isUnsupportedPiUiBridgeApiError(error)) throw error
       console.warn('Pi extension lifecycle discovery failed', error)
       await discoverFallbackHeadlessResources(snapshot.session)
     }

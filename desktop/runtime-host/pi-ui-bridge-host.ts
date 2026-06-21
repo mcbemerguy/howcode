@@ -81,6 +81,24 @@ type PiUiBridgeEmbeddedModule = WorkflowProgressBridgeApi & {
   }) => ExtensionFactory
 }
 
+const unsupportedPiUiBridgeApiErrorName = 'UnsupportedPiUiBridgeApiError'
+
+export class UnsupportedPiUiBridgeApiError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = unsupportedPiUiBridgeApiErrorName
+  }
+}
+
+export function isUnsupportedPiUiBridgeApiError(
+  error: unknown,
+): error is UnsupportedPiUiBridgeApiError {
+  return (
+    error instanceof UnsupportedPiUiBridgeApiError ||
+    (error instanceof Error && error.name === unsupportedPiUiBridgeApiErrorName)
+  )
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -108,13 +126,13 @@ async function loadPiUiBridgeEmbeddedModule(agentDir: string) {
     module = await import(pathToFileURL(entrypoint).href)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    throw new Error(
+    throw new UnsupportedPiUiBridgeApiError(
       `Configured Pi agent directory does not provide the embedded UI bridge API at ui-bridge/embedded.ts. Upgrade Pi or choose an agent directory with Phase 6 bridge support. Import failed: ${reason}`,
     )
   }
 
   if (!isPiUiBridgeEmbeddedModule(module)) {
-    throw new Error(
+    throw new UnsupportedPiUiBridgeApiError(
       'Configured Pi agent directory has ui-bridge/embedded.ts but it does not export the Phase 6 UI bridge APIs. Upgrade Pi or choose a compatible agent directory.',
     )
   }

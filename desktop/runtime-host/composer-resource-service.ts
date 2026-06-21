@@ -13,6 +13,7 @@ import {
 } from './live-runtime-registry.ts'
 import {
   getPiUiBridgeSessionCommands,
+  isUnsupportedPiUiBridgeApiError,
   preparePiUiBridgeCommandDiscoverySession,
 } from './pi-ui-bridge-host.ts'
 
@@ -58,6 +59,7 @@ export async function getComposerSessionResources<T>(
     try {
       await preparePiUiBridgeCommandDiscoverySession({ agentDir, session: snapshot.session })
     } catch (error) {
+      if (isUnsupportedPiUiBridgeApiError(error)) throw error
       console.warn('Pi extension lifecycle discovery failed', error)
       await discoverFallbackHeadlessResources(snapshot.session)
     }
