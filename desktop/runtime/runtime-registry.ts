@@ -122,6 +122,8 @@ async function createRuntime(options: {
     SettingsManager,
     DefaultResourceLoader,
     createAgentSession,
+    createLsToolDefinition,
+    createReadToolDefinition,
     getAgentDir,
   } = await getPiModule()
   const agentDir = getAgentDir()
@@ -148,6 +150,8 @@ async function createRuntime(options: {
     ? createAttachmentFileTools({
         cwd: options.cwd,
         autoResizeImages: settingsManager.getImageAutoResize(),
+        createLsToolDefinition,
+        createReadToolDefinition,
       })
     : null
   const { session } = await createAgentSession({

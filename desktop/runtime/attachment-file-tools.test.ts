@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { createLsToolDefinition, createReadToolDefinition } from '@earendil-works/pi-coding-agent'
 import { describe, expect, it } from 'vitest'
 
 const notAttachedDirectoryErrorPattern = /not an attached folder/
@@ -22,6 +23,14 @@ async function createFixture() {
   return { cwd, attachedFile, outsideFile, attachedDir, nestedDir }
 }
 
+function createTestAttachmentFileTools(options: { cwd: string; autoResizeImages: boolean }) {
+  return createAttachmentFileTools({
+    ...options,
+    createLsToolDefinition,
+    createReadToolDefinition,
+  })
+}
+
 function getTool(tools: ReturnType<typeof createAttachmentFileTools>['tools'], name: string) {
   const tool = tools.find((candidate) => candidate.name === name)
   if (!tool) throw new Error(`Missing tool ${name}`)
@@ -31,7 +40,7 @@ function getTool(tools: ReturnType<typeof createAttachmentFileTools>['tools'], n
 describe('attachment file tools', () => {
   it('allows read for attached files and files inside attached folders only', async () => {
     const { cwd, attachedFile, outsideFile, attachedDir } = await createFixture()
-    const { tools, access } = createAttachmentFileTools({ cwd, autoResizeImages: true })
+    const { tools, access } = createTestAttachmentFileTools({ cwd, autoResizeImages: true })
     const read = getTool(tools, 'read')
 
     await access.grantAttachments([
@@ -62,7 +71,7 @@ describe('attachment file tools', () => {
   it('allows ls of attached folders only and blocks symlink escapes', async () => {
     const { cwd, attachedFile, outsideFile, attachedDir, nestedDir } = await createFixture()
     await symlink(outsideFile, path.join(attachedDir, 'escape.txt'))
-    const { tools, access } = createAttachmentFileTools({ cwd, autoResizeImages: true })
+    const { tools, access } = createTestAttachmentFileTools({ cwd, autoResizeImages: true })
     const ls = getTool(tools, 'ls')
     const read = getTool(tools, 'read')
 
@@ -97,7 +106,7 @@ describe('attachment file tools', () => {
     const cwd = await mkdtemp(path.join(tmpdir(), 'howcode-attachment-tools-'))
     const screenshotPath = path.join(cwd, 'Screenshot 1:00 PM.png')
     await writeFile(screenshotPath, 'screenshot text')
-    const { tools, access } = createAttachmentFileTools({ cwd, autoResizeImages: true })
+    const { tools, access } = createTestAttachmentFileTools({ cwd, autoResizeImages: true })
     const read = getTool(tools, 'read')
 
     await access.grantAttachments([{ path: screenshotPath, name: 'screenshot.png', kind: 'text' }])

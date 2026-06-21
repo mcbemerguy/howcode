@@ -1,10 +1,8 @@
-import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import { getBundledThemes } from '../bundled-themes.ts'
-
-const piPackagePath = path.join('node_modules', '@earendil-works', 'pi-coding-agent')
+import { getResolvedPiPackageRoot } from '../pi-module.ts'
 
 type SessionTheme = AgentSession['resourceLoader']['getThemes'] extends () => infer Result
   ? Result extends { themes: Array<infer Theme> }
@@ -20,32 +18,9 @@ type PiThemeModule = {
 
 let themeModulePromise: Promise<PiThemeModule> | null = null
 
-async function resolvePiPackageRootFromImport() {
-  const entryUrl = await import.meta.resolve('@earendil-works/pi-coding-agent')
-  const entryPath = fileURLToPath(entryUrl)
-  return path.resolve(path.dirname(entryPath), '..')
-}
-
-function findPiPackageRoot() {
-  let directory = path.dirname(fileURLToPath(import.meta.url))
-
-  while (true) {
-    const candidate = path.join(directory, piPackagePath)
-    if (fs.existsSync(path.join(candidate, 'package.json'))) {
-      return candidate
-    }
-
-    const parent = path.dirname(directory)
-    if (parent === directory) {
-      throw new Error('Could not locate @earendil-works/pi-coding-agent package root.')
-    }
-    directory = parent
-  }
-}
-
 async function getPiThemeModule() {
   if (!themeModulePromise) {
-    const piPackageRoot = await resolvePiPackageRootFromImport().catch(() => findPiPackageRoot())
+    const piPackageRoot = await getResolvedPiPackageRoot()
     const themeModulePath = path.join(piPackageRoot, 'dist', 'modes/interactive/theme/theme.js')
     themeModulePromise = import(pathToFileURL(themeModulePath).href) as Promise<PiThemeModule>
   }

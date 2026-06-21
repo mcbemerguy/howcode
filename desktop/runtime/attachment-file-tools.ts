@@ -3,12 +3,9 @@ const externalUrlPattern = /^https?:\/\//i
 import { realpath, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  createLsToolDefinition,
-  createReadToolDefinition,
-  type ToolDefinition,
-} from '@earendil-works/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import type { ComposerAttachment } from '../../shared/desktop-contracts.ts'
+import type { PiModule } from '../pi-module.ts'
 
 type AttachmentGrant = {
   files: Set<string>
@@ -116,14 +113,19 @@ function createAttachmentFileAccess(grants: AttachmentGrant): AttachmentFileAcce
   }
 }
 
-export function createAttachmentFileTools(options: { cwd: string; autoResizeImages: boolean }): {
+export function createAttachmentFileTools(options: {
+  cwd: string
+  autoResizeImages: boolean
+  createLsToolDefinition: PiModule['createLsToolDefinition']
+  createReadToolDefinition: PiModule['createReadToolDefinition']
+}): {
   tools: ToolDefinition[]
   access: AttachmentFileAccess
 } {
   const grants: AttachmentGrant = { files: new Set(), directories: new Set() }
   const attachmentAccess = createAttachmentFileAccess(grants)
 
-  const readTool = createReadToolDefinition(options.cwd, {
+  const readTool = options.createReadToolDefinition(options.cwd, {
     autoResizeImages: options.autoResizeImages,
   })
   const readExecute = readTool.execute.bind(readTool)
@@ -132,7 +134,7 @@ export function createAttachmentFileTools(options: { cwd: string; autoResizeImag
     return await readExecute(toolCallId, params, signal, onUpdate, ctx)
   }
 
-  const lsTool = createLsToolDefinition(options.cwd)
+  const lsTool = options.createLsToolDefinition(options.cwd)
   const lsExecute = lsTool.execute.bind(lsTool)
   lsTool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
     await assertGrantedDirectoryPath(params.path ?? '.', grants, options.cwd)

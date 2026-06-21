@@ -1,15 +1,12 @@
 const hexColorPattern = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i
 
-import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { defaultPiSettings } from '../../shared/default-pi-settings.ts'
 import type { PiThemeState } from '../../shared/desktop-contracts.ts'
 import { getDesktopWorkingDirectory } from '../../shared/desktop-working-directory.ts'
 import { getBundledThemes } from '../bundled-themes.ts'
-import { getPiModule } from '../pi-module.ts'
-
-const piPackagePath = path.join('node_modules', '@earendil-works', 'pi-coding-agent')
+import { getPiModule, getResolvedPiPackageRoot } from '../pi-module.ts'
 
 type ThemeHelpersModule = {
   getResolvedThemeColors(themeName?: string | undefined): Record<string, string>
@@ -32,31 +29,9 @@ type LoadedBundledThemes = {
 
 let themeHelpersPromise: Promise<ThemeHelpersModule> | null = null
 
-async function resolvePiPackageRootFromImport() {
-  const entryUrl = await import.meta.resolve('@earendil-works/pi-coding-agent')
-  const entryPath = fileURLToPath(entryUrl)
-  return path.resolve(path.dirname(entryPath), '..')
-}
-
-function findPiPackageRoot() {
-  let directory = path.dirname(fileURLToPath(import.meta.url))
-
-  while (true) {
-    const candidate = path.join(directory, piPackagePath)
-    if (fs.existsSync(path.join(candidate, 'package.json'))) {
-      return candidate
-    }
-    const parent = path.dirname(directory)
-    if (parent === directory) {
-      throw new Error('Could not locate @earendil-works/pi-coding-agent package root.')
-    }
-    directory = parent
-  }
-}
-
 async function getThemeHelpers() {
   if (!themeHelpersPromise) {
-    const piPackageRoot = await resolvePiPackageRootFromImport().catch(() => findPiPackageRoot())
+    const piPackageRoot = await getResolvedPiPackageRoot()
     const themeModulePath = path.join(piPackageRoot, 'dist', 'modes/interactive/theme/theme.js')
     themeHelpersPromise = import(pathToFileURL(themeModulePath).href) as Promise<ThemeHelpersModule>
   }

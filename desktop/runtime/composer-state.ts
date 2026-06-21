@@ -1,5 +1,4 @@
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core'
-import { getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type { AgentSession } from '@earendil-works/pi-coding-agent'
 import type {
   ComposerBridgeState,
@@ -120,7 +119,20 @@ export function getAvailableThinkingLevelsForModel(
     return ['off']
   }
 
-  return getSupportedThinkingLevels(model) as ComposerThinkingLevel[]
+  const orderedLevels: ComposerThinkingLevel[] = [
+    'off',
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ]
+  return orderedLevels.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level]
+    if (mapped === null) return false
+    if (level === 'xhigh') return mapped !== undefined
+    return true
+  }) as ComposerThinkingLevel[]
 }
 
 export function clampThinkingLevel(

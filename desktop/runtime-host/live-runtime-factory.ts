@@ -43,6 +43,8 @@ export async function createLiveRuntime(
     SettingsManager,
     DefaultResourceLoader,
     createAgentSession,
+    createLsToolDefinition,
+    createReadToolDefinition,
     defineTool,
     getAgentDir,
   } = await getPiModule()
@@ -78,6 +80,8 @@ export async function createLiveRuntime(
     ? createAttachmentFileTools({
         cwd: options.cwd,
         autoResizeImages: settingsManager.getImageAutoResize(),
+        createLsToolDefinition,
+        createReadToolDefinition,
       })
     : null
   const { session } = await createAgentSession({
