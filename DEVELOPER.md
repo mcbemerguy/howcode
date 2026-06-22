@@ -11,10 +11,15 @@
 
 ## Local development
 
+This repo pins the local development runtime in `.node-version`. Use that Node version before installing or running hooks; with fnm this happens automatically after `fnm env --use-on-cd` is loaded.
+
 ```bash
+fnm install
 bun install
 bun run dev
 ```
+
+`bun install` rebuilds Electron native dependencies, then restores the root `node_modules` native files for the pinned stock Node runtime used by tests and the desktop service. `bun run ai:check` also verifies those native files before running Vitest.
 
 ## Common commands
 

@@ -2,6 +2,8 @@
 
 set -e
 
-bun run prepush:clean
-bunx biome check --write --error-on-warnings .
-bun run ai:check
+. "$(dirname "$0")/project-node.sh"
+
+run_with_project_node bun run prepush:clean
+run_with_project_node bunx biome check --write --error-on-warnings .
+run_with_project_node bun run ai:check

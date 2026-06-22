@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
 
-bunx lint-staged
-bun run ai:check
+. "$(dirname "$0")/project-node.sh"
+
+run_with_project_node bunx lint-staged
+run_with_project_node bun run ai:check
